@@ -44,6 +44,10 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
         private set
     var showCompletionDialog: Boolean by mutableStateOf(false)
 
+    /** True for puzzles imported from a photo, whose solution was AI-reconstructed. */
+    var isPhotoImport: Boolean by mutableStateOf(false)
+        private set
+
     private var entity: PuzzleEntity? = null
     private var dismissedIncorrectFill = false
 
@@ -51,6 +55,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
         viewModelScope.launch {
             val e = repo.get(puzzleId) ?: return@launch
             entity = e
+            isPhotoImport = e.sourceId == "photo"
             val p = repo.decode(e)
             puzzle = p
             letters = e.progress

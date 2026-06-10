@@ -14,6 +14,9 @@ personal solving:
 |---|---|---|
 | Jonesin' Crosswords (Matt Jones) | weekly (Thu) | Self-syndicated; the author gives the `.puz` away free every week via a public mailing list and long-standing community mirrors |
 | BEQ (Brendan Emmett Quigley) | Mon & Thu | The constructor posts free puzzles on his own website, supported by donations |
+| Club 72 (Tim Croce) | Tue & Fri | Freestyle puzzles the constructor posts free on his own blog as `.puz` downloads |
+| Tough as Nails (Stella Zawistowski) | ~weekly | Hard themeless puzzles the constructor posts free on her own site as `.puz` downloads |
+| Crosshare Daily Mini | daily | Community constructors publish on Crosshare, a free, open-source, donation-funded platform, expressly for free public solving; the platform provides the `.puz` export API |
 
 Commercial syndicated puzzles (NYT, WSJ, LA Times, Universal, Newsday, …)
 are deliberately **not** included: they are copyrighted works licensed to
@@ -37,6 +40,14 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
 - **Error highlighting** — an *Autocheck* mode that marks every incorrect
   entry with red text and a slash (NYT-style), plus on-demand
   Check letter / word / puzzle and Reveal letter / word / puzzle.
+- **Import from photo** — take a picture or screenshot of any crossword and
+  the app reconstructs it: Claude (via the Anthropic API) reads the grid and
+  clues from the image, **solves the puzzle behind the scenes**, and the
+  result is validated (grid/clue numbering consistency, answer crossings)
+  and added to your library so you can solve it against the AI's solution.
+  Requires your own Claude API key (stored only on the device); AI-imported
+  puzzles are clearly labeled since the reconstructed solution may contain
+  errors.
 - **Metrics** — per-puzzle solve timer that persists across sessions, and a
   stats screen with: puzzles solved, clean (assistance-free) solves, total /
   average / best solve times, current and longest daily solve streaks, and a
@@ -52,6 +63,11 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
   covered by JVM unit tests that synthesize `.puz` files in memory.
 - Room database stores each puzzle (as JSON), the solver's grid, elapsed
   time, and assistance metrics; OkHttp handles downloads.
+- Photo import uses the official Anthropic Java SDK: one streaming Messages
+  API call (`claude-opus-4-8`, adaptive thinking, high effort, vision input,
+  structured JSON output) extracts and solves the puzzle; `ImportConverter`
+  then re-derives the numbering from the returned grid and cross-checks every
+  answer against its crossing letters before accepting it.
 
 ## Building
 

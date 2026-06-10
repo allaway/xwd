@@ -129,6 +129,16 @@ fun SolveScreen(viewModel: SolveViewModel, onBack: () -> Unit) {
             return@Scaffold
         }
         Column(Modifier.fillMaxSize().padding(padding)) {
+            if (viewModel.isPhotoImport) {
+                Surface(color = MaterialTheme.colorScheme.tertiaryContainer) {
+                    Text(
+                        "Imported from a photo — checks compare against an AI-reconstructed " +
+                            "solution, which may contain errors.",
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             Box(
                 modifier = Modifier
                     .weight(1f)

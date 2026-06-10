@@ -33,6 +33,17 @@ android {
     buildFeatures {
         compose = true
     }
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/INDEX.LIST",
+                "META-INF/io.netty.versions.properties",
+            )
+        }
+    }
 }
 
 dependencies {
@@ -52,5 +63,6 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.anthropic)
     testImplementation(libs.junit)
 }
