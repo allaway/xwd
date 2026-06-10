@@ -15,6 +15,7 @@ class StatsCalculatorTest {
         sourceId = source.lowercase(),
         sourceName = source,
         date = date.toString(),
+        uniqueKey = date.toString(),
         title = "t",
         author = "a",
         puzzleJson = "{}",

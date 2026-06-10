@@ -29,29 +29,31 @@ class PuzzleRepository(
 
     /** Download the newest not-yet-stored puzzle from [source]. Returns it, or null if up to date. */
     suspend fun downloadLatest(source: PuzzleSource): PuzzleEntity? {
-        val have = dao.datesForSource(source.id).toSet()
+        val have = dao.keysForSource(source.id).toSet()
         val downloaded = downloader.fetchLatest(source, have) ?: return null
-        return store(source, downloaded.puzzle, downloaded.date)
+        return store(source, downloaded)
     }
 
-    /** Download the puzzle for a specific date. Returns null if the feed has none. */
+    /** Download the puzzle for a specific date (dated sources only). Null if the feed has none. */
     suspend fun downloadFor(source: PuzzleSource, date: LocalDate): PuzzleEntity? {
         val existingId = "${source.id}-$date"
         dao.get(existingId)?.let { return it }
         val downloaded = downloader.fetch(source, date) ?: return null
-        return store(source, downloaded.puzzle, downloaded.date)
+        return store(source, downloaded)
     }
 
-    private suspend fun store(source: PuzzleSource, puzzle: Puzzle, date: LocalDate): PuzzleEntity {
+    private suspend fun store(source: PuzzleSource, downloaded: PuzzleDownloader.Downloaded): PuzzleEntity {
+        val puzzle = downloaded.puzzle
         val emptyProgress = buildString {
             puzzle.cells.forEach { append(if (it.isBlock) '.' else '-') }
         }
         val entity = PuzzleEntity(
-            id = "${source.id}-$date",
+            id = "${source.id}-${downloaded.uniqueKey}",
             sourceId = source.id,
             sourceName = source.name,
-            date = date.toString(),
-            title = puzzle.title.ifBlank { "${source.name} $date" },
+            date = downloaded.date.toString(),
+            uniqueKey = downloaded.uniqueKey,
+            title = puzzle.title.ifBlank { "${source.name} ${downloaded.date}" },
             author = puzzle.author,
             puzzleJson = json.encodeToString(Puzzle.serializer(), puzzle),
             progress = emptyProgress,

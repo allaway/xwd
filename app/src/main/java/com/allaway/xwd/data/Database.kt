@@ -19,6 +19,8 @@ data class PuzzleEntity(
     val sourceId: String,
     val sourceName: String,
     val date: String, // ISO local date
+    /** Stable per-source identity: the ISO date for dated feeds, file slug for scraped feeds. */
+    val uniqueKey: String,
     val title: String,
     val author: String,
     /** Full Puzzle serialized as JSON. */
@@ -45,8 +47,8 @@ interface PuzzleDao {
     @Query("SELECT * FROM puzzles WHERE id = :id")
     suspend fun get(id: String): PuzzleEntity?
 
-    @Query("SELECT date FROM puzzles WHERE sourceId = :sourceId")
-    suspend fun datesForSource(sourceId: String): List<String>
+    @Query("SELECT uniqueKey FROM puzzles WHERE sourceId = :sourceId")
+    suspend fun keysForSource(sourceId: String): List<String>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(entity: PuzzleEntity): Long

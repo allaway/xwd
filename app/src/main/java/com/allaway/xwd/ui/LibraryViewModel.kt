@@ -32,6 +32,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     val sources: List<PuzzleSource> = PuzzleSources.all
 
+    /** Sources with a browseable per-date archive. */
+    val datedSources: List<PuzzleSource> = PuzzleSources.dated
+
     /** Fetch the newest available puzzle from every source. */
     fun downloadLatestFromAll() {
         if (downloading) return

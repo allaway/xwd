@@ -105,9 +105,10 @@ fun LibraryScreen(
                 Text("No puzzles yet", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Tap the download button to fetch today's puzzles from the " +
-                        "Wall Street Journal, Universal Crossword, and Jonesin' feeds, " +
-                        "or + to pick a date from the archives.",
+                    "Tap the download button to fetch the latest free puzzles from " +
+                        "Jonesin' (Matt Jones) and BEQ (Brendan Emmett Quigley) — " +
+                        "real puzzles their constructors publish free for personal " +
+                        "solving — or + to pick a date from the Jonesin' archive.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -217,7 +218,7 @@ private fun PuzzleCard(puzzle: PuzzleEntity, onClick: () -> Unit, onDelete: () -
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ArchiveDownloadDialog(viewModel: LibraryViewModel, onDismiss: () -> Unit) {
-    var selectedSource by remember { mutableStateOf(viewModel.sources.first()) }
+    var selectedSource by remember { mutableStateOf(viewModel.datedSources.first()) }
     val dateState = rememberDatePickerState(
         initialSelectedDateMillis = System.currentTimeMillis(),
     )
@@ -242,7 +243,7 @@ private fun ArchiveDownloadDialog(viewModel: LibraryViewModel, onDismiss: () -> 
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            viewModel.sources.forEach { source ->
+            viewModel.datedSources.forEach { source ->
                 FilterChip(
                     selected = source == selectedSource,
                     onClick = { selectedSource = source },
