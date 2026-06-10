@@ -18,9 +18,22 @@ android {
         versionName = "1.0"
     }
 
+    // CI signing: provided via env vars decoded from repo secrets; absent locally.
+    val ciKeystorePath: String? = System.getenv("XWD_KEYSTORE_PATH")
+    signingConfigs {
+        if (ciKeystorePath != null) {
+            create("release") {
+                storeFile = file(ciKeystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {

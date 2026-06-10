@@ -1,0 +1,61 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Building release APK signed with the repo's stable key."
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            export XWD_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
+            ./gradlew assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk xwd-crosswords.apk
+          else
+            echo "::warning::Signing secrets not set - building a debug APK with an unstable key. Add KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD repo secrets for installable updates."
+            ./gradlew assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk xwd-crosswords.apk
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xwd-crosswords-apk
+          path: xwd-crosswords.apk
+
+      - name: Update "latest" release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          prerelease: true
+          body: >
+            Rolling build of the most recent push to main.
+            Download xwd-crosswords.apk on your phone and install it.
+          files: xwd-crosswords.apk
