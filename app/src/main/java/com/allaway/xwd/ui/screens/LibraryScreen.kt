@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -47,8 +48,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.allaway.xwd.data.PuzzleEntity
 import com.allaway.xwd.data.formatSeconds
+import com.allaway.xwd.ui.ImportViewModel
 import com.allaway.xwd.ui.LibraryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,7 +64,9 @@ fun LibraryScreen(
     val puzzles by viewModel.puzzles.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showArchiveDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PuzzleEntity?>(null) }
+    val importViewModel: ImportViewModel = viewModel()
 
     LaunchedEffect(viewModel.message) {
         viewModel.message?.let {
@@ -75,6 +80,9 @@ fun LibraryScreen(
             TopAppBar(
                 title = { Text("Crosswords") },
                 actions = {
+                    IconButton(onClick = { showImportDialog = true }) {
+                        Icon(Icons.Outlined.PhotoCamera, contentDescription = "Import from photo")
+                    }
                     IconButton(onClick = { showArchiveDialog = true }) {
                         Icon(Icons.Outlined.Add, contentDescription = "Download from archive")
                     }
@@ -134,6 +142,14 @@ fun LibraryScreen(
         ArchiveDownloadDialog(
             viewModel = viewModel,
             onDismiss = { showArchiveDialog = false },
+        )
+    }
+
+    if (showImportDialog) {
+        ImportDialog(
+            viewModel = importViewModel,
+            onDismiss = { showImportDialog = false },
+            onOpenPuzzle = onOpenPuzzle,
         )
     }
 

@@ -1,8 +1,7 @@
 package com.allaway.xwd.puz
 
-import com.allaway.xwd.model.Cell
 import com.allaway.xwd.model.Clue
-import com.allaway.xwd.model.Direction
+import com.allaway.xwd.model.GridBuilder
 import com.allaway.xwd.model.Puzzle
 import java.nio.charset.Charset
 
@@ -61,43 +60,21 @@ object PuzParser {
 
         val circled = parseCircles(bytes, pos, area)
 
-        // Compute numbering from grid topology.
-        val cells = ArrayList<Cell>(area)
-        var number = 1
-        val acrossStarts = ArrayList<Pair<Int, Int>>() // (number, index)
-        val downStarts = ArrayList<Pair<Int, Int>>()
-        for (i in 0 until area) {
-            val ch = solution[i]
-            if (ch == '.') {
-                cells.add(Cell(solution = null))
-                continue
-            }
-            val row = i / width
-            val col = i % width
-            val blockLeft = col == 0 || solution[i - 1] == '.'
-            val openRight = col + 1 < width && solution[i + 1] != '.'
-            val blockUp = row == 0 || solution[i - width] == '.'
-            val openDown = row + 1 < height && solution[i + width] != '.'
-            val startsAcross = blockLeft && openRight
-            val startsDown = blockUp && openDown
-            var cellNumber = 0
-            if (startsAcross || startsDown) {
-                cellNumber = number++
-                if (startsAcross) acrossStarts.add(cellNumber to i)
-                if (startsDown) downStarts.add(cellNumber to i)
-            }
-            cells.add(Cell(solution = ch.uppercaseChar(), number = cellNumber, circled = circled[i]))
+        val built = try {
+            GridBuilder.build(solution, width, height, circled)
+        } catch (e: IllegalArgumentException) {
+            throw PuzFormatException(e.message ?: "Invalid grid")
         }
-
-        // .puz lists clues in cell-number order, across before down on shared numbers.
-        val starts = (acrossStarts.map { Triple(it.first, Direction.ACROSS, it.second) } +
-            downStarts.map { Triple(it.first, Direction.DOWN, it.second) })
-            .sortedWith(compareBy({ it.first }, { it.second }))
-        if (starts.size != numClues) {
-            throw PuzFormatException("Grid implies ${starts.size} clues but file declares $numClues")
+        if (built.starts.size != numClues) {
+            throw PuzFormatException("Grid implies ${built.starts.size} clues but file declares $numClues")
         }
-        val clues = starts.mapIndexed { i, (num, dir, start) ->
-            Clue(num, dir, clueTexts[i], wordCells(start, dir, solution, width, height))
+        val clues = built.starts.mapIndexed { i, start ->
+            Clue(
+                start.number,
+                start.direction,
+                clueTexts[i],
+                GridBuilder.wordCells(start.cellIndex, start.direction, solution, width, height),
+            )
         }
 
         return Puzzle(
@@ -107,23 +84,10 @@ object PuzParser {
             notes = notes,
             width = width,
             height = height,
-            cells = cells,
+            cells = built.cells,
             clues = clues,
             scrambled = scrambled,
         )
-    }
-
-    private fun wordCells(start: Int, dir: Direction, solution: String, width: Int, height: Int): List<Int> {
-        val step = if (dir == Direction.ACROSS) 1 else width
-        val result = ArrayList<Int>()
-        var i = start
-        while (i < solution.length && solution[i] != '.') {
-            result.add(i)
-            if (dir == Direction.ACROSS && i % width == width - 1) break
-            if (dir == Direction.DOWN && i / width == height - 1) break
-            i += step
-        }
-        return result
     }
 
     /** Scan the extra sections that follow the strings for GEXT circle flags. */

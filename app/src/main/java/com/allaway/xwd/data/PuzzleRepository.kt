@@ -42,6 +42,28 @@ class PuzzleRepository(
         return store(source, downloaded)
     }
 
+    /** Store a puzzle imported from a photo/screenshot (AI-reconstructed solution). */
+    suspend fun storeImported(puzzle: Puzzle): PuzzleEntity {
+        val date = LocalDate.now()
+        val emptyProgress = buildString {
+            puzzle.cells.forEach { append(if (it.isBlock) '.' else '-') }
+        }
+        val entity = PuzzleEntity(
+            id = "photo-${System.currentTimeMillis()}",
+            sourceId = "photo",
+            sourceName = "Photo import",
+            date = date.toString(),
+            uniqueKey = date.toString(),
+            title = puzzle.title,
+            author = puzzle.author,
+            puzzleJson = json.encodeToString(Puzzle.serializer(), puzzle),
+            progress = emptyProgress,
+            addedAt = System.currentTimeMillis(),
+        )
+        dao.insert(entity)
+        return entity
+    }
+
     private suspend fun store(source: PuzzleSource, downloaded: PuzzleDownloader.Downloaded): PuzzleEntity {
         val puzzle = downloaded.puzzle
         val emptyProgress = buildString {
