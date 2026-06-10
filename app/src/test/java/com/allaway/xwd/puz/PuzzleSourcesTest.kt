@@ -55,10 +55,40 @@ class PuzzleSourcesTest {
     }
 
     @Test
+    fun extractsDropboxPuzLinkWithEscapedQuery() {
+        val fetch = PuzzleSources.byId("club72")!!.fetch as Fetch.LatestFromPage
+        val html = """<a href="https://www.dropbox.com/scl/fi/abc/Puzzle1201Freestyle1122.pdf?rlkey=x&amp;raw=1">pdf</a>
+            <a href="https://www.dropbox.com/scl/fi/xyz/Puzzle1201Freestyle1122.puz?rlkey=nxo&amp;st=10&amp;dl=1">puz</a>"""
+        assertEquals(
+            "https://www.dropbox.com/scl/fi/xyz/Puzzle1201Freestyle1122.puz?rlkey=nxo&st=10&dl=1",
+            PuzzleDownloader.extractLatestPuzUrl(html, fetch),
+        )
+    }
+
+    @Test
+    fun extractsCrosshareDailyMiniId() {
+        val fetch = PuzzleSources.byId("crosshare-mini")!!.fetch as Fetch.LatestFromPage
+        val html = """"dailymini":{"title":"In Traffic","rating":{"r":1143.57,"d":62.19,"u":20611},""" +
+            """"authorName":"Schmeel","authorId":"1ekGSxNMr1dt5hlnNWWHjqSJr2G2","id":"U4h00qNAL6jIuoBBudCe"}"""
+        assertEquals(
+            "https://crosshare.org/api/puz/U4h00qNAL6jIuoBBudCe",
+            PuzzleDownloader.extractLatestPuzUrl(html, fetch),
+        )
+    }
+
+    @Test
     fun scrapedPuzzlesGetStableKeys() {
         assertEquals(
             "1894ThemelessMonday",
             PuzzleDownloader.puzUrlKey("https://www.brendanemmettquigley.com/files/1894ThemelessMonday.puz"),
+        )
+        assertEquals(
+            "Puzzle1201Freestyle1122",
+            PuzzleDownloader.puzUrlKey("https://www.dropbox.com/scl/fi/xyz/Puzzle1201Freestyle1122.puz?rlkey=nxo&dl=1"),
+        )
+        assertEquals(
+            "U4h00qNAL6jIuoBBudCe",
+            PuzzleDownloader.puzUrlKey("https://crosshare.org/api/puz/U4h00qNAL6jIuoBBudCe"),
         )
     }
 }

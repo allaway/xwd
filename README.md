@@ -14,6 +14,9 @@ personal solving:
 |---|---|---|
 | Jonesin' Crosswords (Matt Jones) | weekly (Thu) | Self-syndicated; the author gives the `.puz` away free every week via a public mailing list and long-standing community mirrors |
 | BEQ (Brendan Emmett Quigley) | Mon & Thu | The constructor posts free puzzles on his own website, supported by donations |
+| Club 72 (Tim Croce) | Tue & Fri | Freestyle puzzles the constructor posts free on his own blog as `.puz` downloads |
+| Tough as Nails (Stella Zawistowski) | ~weekly | Hard themeless puzzles the constructor posts free on her own site as `.puz` downloads |
+| Crosshare Daily Mini | daily | Community constructors publish on Crosshare, a free, open-source, donation-funded platform, expressly for free public solving; the platform provides the `.puz` export API |
 
 Commercial syndicated puzzles (NYT, WSJ, LA Times, Universal, Newsday, …)
 are deliberately **not** included: they are copyrighted works licensed to

@@ -22,13 +22,13 @@ sealed interface Fetch {
                 .filter { it.dayOfWeek in publishedOn }
     }
 
-    /** The newest .puz link is discovered by scanning an HTML page. */
+    /** The newest puzzle is discovered by scanning an HTML page. */
     data class LatestFromPage(
         val pageUrl: String,
-        /** Regex whose group 1 captures the .puz href. */
+        /** Regex whose group 1 captures the puzzle link or id, newest first on the page. */
         val linkPattern: Regex,
-        /** Prepended when the captured href is relative. */
-        val baseUrl: String,
+        /** Turns the (HTML-unescaped) capture into an absolute .puz URL. */
+        val resolveUrl: (String) -> String = { it },
     ) : Fetch
 }
 
@@ -54,6 +54,9 @@ object PuzzleSources {
 
     private val YYMMDD: DateTimeFormatter = DateTimeFormatter.ofPattern("yyMMdd")
 
+    /** Dropbox share links as used on WordPress blogs (Club 72, Tough as Nails). */
+    private val DROPBOX_PUZ = Regex("href=\"(https://www\\.dropbox\\.com/[^\"]*\\.puz[^\"]*)\"")
+
     val all: List<PuzzleSource> = listOf(
         PuzzleSource(
             id = "jonesin",
@@ -77,7 +80,48 @@ object PuzzleSources {
             fetch = Fetch.LatestFromPage(
                 pageUrl = "https://www.brendanemmettquigley.com/",
                 linkPattern = Regex("href=\"((?:https?://[^\"]+|/files/[^\"]+)\\.puz)\""),
-                baseUrl = "https://www.brendanemmettquigley.com",
+                resolveUrl = { href ->
+                    if (href.startsWith("http")) href
+                    else "https://www.brendanemmettquigley.com$href"
+                },
+            ),
+        ),
+        PuzzleSource(
+            id = "club72",
+            name = "Club 72",
+            attribution = "Freestyle crosswords by Tim Croce, Tuesdays and Fridays.",
+            licenseBasis = "Published free by the constructor on his own blog " +
+                "(club72.wordpress.com) as .puz downloads. Free for personal, " +
+                "non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                pageUrl = "https://club72.wordpress.com/",
+                linkPattern = DROPBOX_PUZ,
+            ),
+        ),
+        PuzzleSource(
+            id = "toughasnails",
+            name = "Tough as Nails",
+            attribution = "Hard themeless crosswords by Stella Zawistowski.",
+            licenseBasis = "Published free by the constructor on her own site " +
+                "(toughasnails.net) as .puz downloads. Free for personal, " +
+                "non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                pageUrl = "https://toughasnails.net/",
+                linkPattern = DROPBOX_PUZ,
+            ),
+        ),
+        PuzzleSource(
+            id = "crosshare-mini",
+            name = "Crosshare Daily Mini",
+            attribution = "Community-constructed daily mini from crosshare.org.",
+            licenseBasis = "Constructors publish on Crosshare, a free, open-source, " +
+                "donation-funded platform, expressly for free public solving; the " +
+                "platform itself provides the .puz export endpoint. Free for " +
+                "personal, non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                pageUrl = "https://crosshare.org/",
+                linkPattern = Regex("\"dailymini\":.*?\"id\":\"([A-Za-z0-9]+)\""),
+                resolveUrl = { id -> "https://crosshare.org/api/puz/$id" },
             ),
         ),
     )

@@ -105,10 +105,11 @@ fun LibraryScreen(
                 Text("No puzzles yet", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Tap the download button to fetch the latest free puzzles from " +
-                        "Jonesin' (Matt Jones) and BEQ (Brendan Emmett Quigley) — " +
-                        "real puzzles their constructors publish free for personal " +
-                        "solving — or + to pick a date from the Jonesin' archive.",
+                    "Tap the download button to fetch the latest puzzles from " +
+                        "Jonesin', BEQ, Club 72, Tough as Nails, and the Crosshare " +
+                        "Daily Mini — real puzzles their constructors publish free " +
+                        "for personal solving — or + to pick a date from the " +
+                        "Jonesin' archive.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

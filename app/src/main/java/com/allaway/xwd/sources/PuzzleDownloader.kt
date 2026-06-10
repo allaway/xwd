@@ -88,14 +88,17 @@ class PuzzleDownloader(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) " +
                 "Chrome/125.0 Mobile Safari/537.36"
 
-        /** First .puz link on the page is the newest post's puzzle. */
+        /** First match on the page is the newest post's puzzle. */
         fun extractLatestPuzUrl(html: String, fetch: Fetch.LatestFromPage): String? {
-            val href = fetch.linkPattern.find(html)?.groupValues?.get(1) ?: return null
-            return if (href.startsWith("http")) href else fetch.baseUrl + href
+            val capture = fetch.linkPattern.find(html)?.groupValues?.get(1) ?: return null
+            return fetch.resolveUrl(unescapeHtml(capture))
         }
+
+        private fun unescapeHtml(s: String): String =
+            s.replace("&amp;", "&").replace("&#038;", "&").replace("&#38;", "&")
 
         /** Stable identity for a scraped puzzle: its file name without extension. */
         fun puzUrlKey(url: String): String =
-            url.substringAfterLast('/').removeSuffix(".puz")
+            url.substringBefore('?').substringAfterLast('/').removeSuffix(".puz")
     }
 }
