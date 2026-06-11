@@ -52,10 +52,11 @@ sealed interface Fetch {
  *
  * Only sources whose rights holders themselves distribute the puzzle files
  * free of charge to the general public are included; [licenseBasis] records
- * the basis on which non-commercial solving use rests. Commercial syndicated
- * feeds (NYT, WSJ, Universal, LAT, ...) are deliberately absent: they are
- * copyrighted works with no license for third-party redistribution or reuse,
- * even where third-party mirrors of them exist.
+ * the basis on which non-commercial solving use rests. A commercial publisher
+ * qualifies when it posts the files itself with no login (e.g. Private Eye).
+ * Commercial syndicated feeds (NYT, WSJ, Universal, LAT, ...) are deliberately
+ * absent: they are copyrighted works with no license for third-party
+ * redistribution or reuse, even where third-party mirrors of them exist.
  */
 data class PuzzleSource(
     val id: String,
@@ -187,6 +188,61 @@ object PuzzleSources {
             ),
         ),
         PuzzleSource(
+            id = "bewilderingly",
+            name = "Bewilderingly",
+            attribution = "Crosswords by Will Nediger, roughly every other Monday.",
+            licenseBasis = "Published free by the constructor on his own blog " +
+                "(blog.bewilderinglypuzzles.com) as .puz downloads, supported by " +
+                "donations. Free for personal, non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                pageUrl = "https://blog.bewilderinglypuzzles.com/",
+                linkPattern = DROPBOX_PUZ,
+                // Blogger's archive isn't numerically paginated, so only the
+                // front page's posts are browsable.
+            ),
+        ),
+        PuzzleSource(
+            id = "puzzlepit",
+            name = "The Puzzle Pit",
+            attribution = "Themed and themeless crosswords, three times a week.",
+            licenseBasis = "Published free by the constructor on their own site " +
+                "(thepuzzlepit.com) as zipped .puz downloads. Free for personal, " +
+                "non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                // The front page links only post permalinks; the RSS feed
+                // carries the full post HTML including the file links.
+                pageUrl = "https://thepuzzlepit.com/feed/",
+                linkPattern = Regex("href=\"(https://thepuzzlepit\\.com/wp-content/[^\"]+\\.zip)\""),
+                archivePageUrl = { n -> "https://thepuzzlepit.com/feed/?paged=$n" },
+            ),
+        ),
+        PuzzleSource(
+            id = "nevillefogarty",
+            name = "Neville Fogarty",
+            attribution = "Friday crosswords by Neville Fogarty (archive; last new puzzle 2022).",
+            licenseBasis = "Published free by the constructor on his own blog " +
+                "(nevillefogarty.wordpress.com) as .puz downloads. Free for " +
+                "personal, non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                pageUrl = "https://nevillefogarty.wordpress.com/",
+                linkPattern = DROPBOX_PUZ,
+                archivePageUrl = { n -> "https://nevillefogarty.wordpress.com/page/$n/" },
+            ),
+        ),
+        PuzzleSource(
+            id = "privateeye",
+            name = "Private Eye",
+            attribution = "Private Eye’s fortnightly cryptic by Cyclops.",
+            licenseBasis = "The magazine itself posts each issue’s cryptic as a " +
+                "free .puz download on private-eye.co.uk, no login or subscription " +
+                "required. Free for personal, non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                pageUrl = "https://www.private-eye.co.uk/crossword",
+                linkPattern = ANY_PUZ,
+                resolveUrl = resolver("https://www.private-eye.co.uk/crossword"),
+            ),
+        ),
+        PuzzleSource(
             id = "crosshare-mini",
             name = "Crosshare Daily Mini",
             attribution = "Community-constructed daily mini from crosshare.org.",
@@ -195,9 +251,14 @@ object PuzzleSources {
                 "platform itself provides the .puz export endpoint. Free for " +
                 "personal, non-commercial solving.",
             fetch = Fetch.LatestFromPage(
-                pageUrl = "https://crosshare.org/",
-                linkPattern = Regex("\"dailymini\":.*?\"id\":\"([A-Za-z0-9]+)\""),
+                pageUrl = "https://crosshare.org/dailyminis",
+                linkPattern = Regex("href=\"/crosswords/([A-Za-z0-9]+)"),
                 resolveUrl = { id -> "https://crosshare.org/api/puz/$id" },
+                // Page n of the archive is the month n-1 months back.
+                archivePageUrl = { n ->
+                    val month = LocalDate.now().minusMonths(n - 1L)
+                    "https://crosshare.org/dailyminis/${month.year}/${month.monthValue}"
+                },
             ),
         ),
     )

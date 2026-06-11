@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
+import java.net.URLDecoder
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
@@ -156,15 +157,28 @@ class PuzzleDownloader(
         /** First match on the page is the newest post's puzzle. */
         fun extractLatestPuzUrl(html: String, fetch: Fetch.LatestFromPage): String? {
             val capture = fetch.linkPattern.find(html)?.groupValues?.get(1) ?: return null
-            return fetch.resolveUrl(unescapeHtml(capture))
+            return directDownloadUrl(fetch.resolveUrl(unescapeHtml(capture)))
         }
 
         /** Every puzzle linked on the page, newest first, deduplicated by key. */
         fun extractAllPuzUrls(html: String, fetch: Fetch.LatestFromPage): List<String> =
             fetch.linkPattern.findAll(html)
-                .map { fetch.resolveUrl(unescapeHtml(it.groupValues[1])) }
+                .map { directDownloadUrl(fetch.resolveUrl(unescapeHtml(it.groupValues[1]))) }
                 .distinctBy { puzUrlKey(it) }
                 .toList()
+
+        /**
+         * Dropbox share links serve an HTML preview page unless dl=1; some
+         * blogs (e.g. JKL Crosswords) link the dl=0 form. Rewrite to the
+         * raw-file form so the download is the puzzle, not the page.
+         */
+        fun directDownloadUrl(url: String): String = when {
+            !url.contains("dropbox.com") -> url
+            url.contains("dl=0") -> url.replace("dl=0", "dl=1")
+            url.contains("dl=1") -> url
+            url.contains('?') -> "$url&dl=1"
+            else -> "$url?dl=1"
+        }
 
         /** "Puzzle1201Freestyle1122" -> "Puzzle 1201 Freestyle 1122". */
         fun humanizeSlug(slug: String): String =
@@ -175,9 +189,19 @@ class PuzzleDownloader(
         private fun unescapeHtml(s: String): String =
             s.replace("&amp;", "&").replace("&#038;", "&").replace("&#38;", "&")
 
-        /** Stable identity for a scraped puzzle: its file name without extension. */
-        fun puzUrlKey(url: String): String =
-            url.substringBefore('?').substringAfterLast('/')
-                .removeSuffix(".ipuz").removeSuffix(".puz")
+        /**
+         * Stable identity for a scraped puzzle: its file name without
+         * extension, percent-decoded so keys (and the titles derived from
+         * them) read "Letter for Letter", not "Letter%20for%20Letter".
+         */
+        fun puzUrlKey(url: String): String {
+            val raw = url.substringBefore('?').substringAfterLast('/')
+                .removeSuffix(".zip").removeSuffix(".ipuz").removeSuffix(".puz")
+            return try {
+                URLDecoder.decode(raw, "UTF-8")
+            } catch (_: Exception) {
+                raw
+            }
+        }
     }
 }

@@ -34,7 +34,12 @@ object IpuzParser {
         val kinds = (root["kind"] as? JsonArray)?.mapNotNull {
             (it as? JsonPrimitive)?.contentOrNull
         } ?: emptyList()
-        if (kinds.none { it.contains("crossword", ignoreCase = true) }) {
+        // Barred/diagramless variants parse as if they were block grids and
+        // render as nonsense, so reject them outright rather than garble them.
+        val unsupported = listOf("barred", "diagramless", "acrostic")
+        if (kinds.none { it.contains("crossword", ignoreCase = true) } ||
+            kinds.any { k -> unsupported.any { k.contains(it, ignoreCase = true) } }
+        ) {
             throw PuzFormatException("Unsupported ipuz kind: $kinds")
         }
 

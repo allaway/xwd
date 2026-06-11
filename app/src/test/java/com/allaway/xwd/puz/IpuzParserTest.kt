@@ -116,6 +116,16 @@ class IpuzParserTest {
         assertThrows(PuzFormatException::class.java) {
             IpuzParser.parse("""not json at all""")
         }
+        // Barred grids (e.g. squares.io variety cryptics) would render as
+        // nonsense if treated as block grids.
+        assertThrows(PuzFormatException::class.java) {
+            IpuzParser.parse(
+                basic.replace(
+                    "http://ipuz.org/crossword#1",
+                    "https://squares.io/crossword-kind/barred-diagramless/no-reflow",
+                ),
+            )
+        }
         // Declared numbering that contradicts the grid shape.
         assertThrows(PuzFormatException::class.java) {
             IpuzParser.parse(

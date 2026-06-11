@@ -66,12 +66,75 @@ class PuzzleSourcesTest {
     }
 
     @Test
-    fun extractsCrosshareDailyMiniId() {
+    fun extractsCrosshareDailyMiniIdsFromListing() {
         val fetch = PuzzleSources.byId("crosshare-mini")!!.fetch as Fetch.LatestFromPage
-        val html = """"dailymini":{"title":"In Traffic","rating":{"r":1143.57,"d":62.19,"u":20611},""" +
-            """"authorName":"Schmeel","authorId":"1ekGSxNMr1dt5hlnNWWHjqSJr2G2","id":"U4h00qNAL6jIuoBBudCe"}"""
+        // /dailyminis pages link each mini twice (thumbnail and title).
+        val html = """
+            <a href="/crosswords/r1vpcu5HHRRnLUIPHBWH/357-justice">357: Justice</a>
+            <a href="/crosswords/r1vpcu5HHRRnLUIPHBWH/357-justice">again</a>
+            <a href="/crosswords/U4h00qNAL6jIuoBBudCe/in-traffic">In Traffic</a>
+        """.trimIndent()
         assertEquals(
-            "https://crosshare.org/api/puz/U4h00qNAL6jIuoBBudCe",
+            listOf(
+                "https://crosshare.org/api/puz/r1vpcu5HHRRnLUIPHBWH",
+                "https://crosshare.org/api/puz/U4h00qNAL6jIuoBBudCe",
+            ),
+            PuzzleDownloader.extractAllPuzUrls(html, fetch),
+        )
+    }
+
+    @Test
+    fun crosshareArchivePagesAreMonthsBackwardsFromNow() {
+        val fetch = PuzzleSources.byId("crosshare-mini")!!.fetch as Fetch.LatestFromPage
+        val thisMonth = LocalDate.now()
+        assertEquals(
+            "https://crosshare.org/dailyminis/${thisMonth.year}/${thisMonth.monthValue}",
+            fetch.archivePageUrl!!(1),
+        )
+        val lastMonth = thisMonth.minusMonths(1)
+        assertEquals(
+            "https://crosshare.org/dailyminis/${lastMonth.year}/${lastMonth.monthValue}",
+            fetch.archivePageUrl!!(2),
+        )
+    }
+
+    @Test
+    fun extractsPuzzlePitZipsFromFeed() {
+        val fetch = PuzzleSources.byId("puzzlepit")!!.fetch as Fetch.LatestFromPage
+        // The RSS feed carries each post's full HTML: a Crosshare embed link
+        // (ignored) and the self-hosted ZIP linked twice.
+        val html = """
+            <a href="https://crosshare.org/embed/8I6Nbi2vMG5s3MmP1c6a/tMB58LHUn9cQvjglVzfkzcNhgQX2">solve</a>
+            <a href="https://thepuzzlepit.com/wp-content/uploads/2026/06/themed-wednesday-18-_om-nom-nom_.zip">puz</a>
+            <a href="https://thepuzzlepit.com/wp-content/uploads/2026/06/themed-wednesday-18-_om-nom-nom_.zip">again</a>
+            <a href="https://thepuzzlepit.com/wp-content/uploads/2026/06/metal-monday-55-themeless.zip">puz</a>
+        """.trimIndent()
+        assertEquals(
+            listOf(
+                "https://thepuzzlepit.com/wp-content/uploads/2026/06/themed-wednesday-18-_om-nom-nom_.zip",
+                "https://thepuzzlepit.com/wp-content/uploads/2026/06/metal-monday-55-themeless.zip",
+            ),
+            PuzzleDownloader.extractAllPuzUrls(html, fetch),
+        )
+    }
+
+    @Test
+    fun extractsPrivateEyePuzLink() {
+        val fetch = PuzzleSources.byId("privateeye")!!.fetch as Fetch.LatestFromPage
+        val html = """<a href="https://www.private-eye.co.uk/pictures/crossword/download/831.puz">Download</a>"""
+        assertEquals(
+            "https://www.private-eye.co.uk/pictures/crossword/download/831.puz",
+            PuzzleDownloader.extractLatestPuzUrl(html, fetch),
+        )
+    }
+
+    @Test
+    fun extractsBewilderinglyDropboxLink() {
+        val fetch = PuzzleSources.byId("bewilderingly")!!.fetch as Fetch.LatestFromPage
+        val html = """<a href="https://www.dropbox.com/scl/fi/r2sgbxdbvyibz3gnkhlzj/060126-freestyle-24.pdf?rlkey=zca&amp;dl=1">pdf</a>
+            <a href="https://www.dropbox.com/scl/fi/2h909ors96s18o6no5ynk/060126-freestyle-24.puz?rlkey=xj0&amp;dl=1">puz</a>"""
+        assertEquals(
+            "https://www.dropbox.com/scl/fi/2h909ors96s18o6no5ynk/060126-freestyle-24.puz?rlkey=xj0&dl=1",
             PuzzleDownloader.extractLatestPuzUrl(html, fetch),
         )
     }
@@ -155,6 +218,44 @@ class PuzzleSourcesTest {
         assertEquals(
             "puzzle-41",
             PuzzleDownloader.puzUrlKey("https://jklcrosswords.com/files/puzzle-41.ipuz"),
+        )
+    }
+
+    @Test
+    fun dropboxPreviewLinksAreRewrittenToDirectDownloads() {
+        val fetch = PuzzleSources.byId("jkl")!!.fetch as Fetch.LatestFromPage
+        // JKL links the dl=0 (HTML preview) form of its Dropbox files.
+        val html = """<a href="https://www.dropbox.com/s/uys34dnpuigm8iq/Letter%20for%20Letter.puz?dl=0">puz</a>"""
+        assertEquals(
+            "https://www.dropbox.com/s/uys34dnpuigm8iq/Letter%20for%20Letter.puz?dl=1",
+            PuzzleDownloader.extractLatestPuzUrl(html, fetch),
+        )
+        // A Dropbox link with no dl parameter at all also gets one.
+        assertEquals(
+            "https://www.dropbox.com/s/abc/foo.puz?rlkey=z&dl=1",
+            PuzzleDownloader.directDownloadUrl("https://www.dropbox.com/s/abc/foo.puz?rlkey=z"),
+        )
+        // Non-Dropbox URLs pass through untouched.
+        assertEquals(
+            "https://jklcrosswords.com/files/puzzle-41.ipuz",
+            PuzzleDownloader.directDownloadUrl("https://jklcrosswords.com/files/puzzle-41.ipuz"),
+        )
+    }
+
+    @Test
+    fun percentEncodedFileNamesDecodeInKeysAndTitles() {
+        val key = PuzzleDownloader.puzUrlKey(
+            "https://www.dropbox.com/s/uys34dnpuigm8iq/Letter%20for%20Letter.puz?dl=1",
+        )
+        assertEquals("Letter for Letter", key)
+        assertEquals("Letter for Letter", PuzzleDownloader.humanizeSlug(key))
+    }
+
+    @Test
+    fun zippedPuzzlesGetKeysWithoutTheZipExtension() {
+        assertEquals(
+            "metal-monday-55-themeless",
+            PuzzleDownloader.puzUrlKey("https://thepuzzlepit.com/wp-content/uploads/2026/06/metal-monday-55-themeless.zip"),
         )
     }
 
