@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.allaway.xwd"
+    namespace = "app.xwd"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.allaway.xwd"
+        applicationId = "app.xwd"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
