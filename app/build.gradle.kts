@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.allaway.xwd"
+    namespace = "app.xwd"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.allaway.xwd"
+        applicationId = "app.xwd"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -75,6 +75,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.okhttp)
+    implementation(libs.androidx.work.runtime)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.anthropic)
     testImplementation(libs.junit)
