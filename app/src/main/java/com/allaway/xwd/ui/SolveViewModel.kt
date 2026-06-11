@@ -106,7 +106,9 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     fun input(char: Char) {
         if (completionState == CompletionState.SOLVED) return
         val p = puzzle ?: return
-        setLetter(selected, char.uppercaseChar())
+        val cell = selected
+        setLetter(cell, char.uppercaseChar())
+        entity = entity?.let { it.copy(firstFillCell = it.firstFillCell ?: cell, lastFillCell = cell) }
         advanceAfterInput(p)
         checkCompletion()
         save()
@@ -209,7 +211,10 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
         checkedWrong = emptySet()
         revealed = emptySet()
         dismissedIncorrectFill = false
-        if (completionState != CompletionState.SOLVED) completionState = CompletionState.IN_PROGRESS
+        if (completionState != CompletionState.SOLVED) {
+            completionState = CompletionState.IN_PROGRESS
+            entity = entity?.copy(firstFillCell = null, lastFillCell = null)
+        }
         save()
     }
 

@@ -77,6 +77,51 @@ class PuzzleSourcesTest {
     }
 
     @Test
+    fun jonesinArchiveDatesPageBackwardsAndStopAtArchiveStart() {
+        val fetch = PuzzleSources.byId("jonesin")!!.fetch as Fetch.Dated
+        val page = fetch.archiveDates(LocalDate.of(2026, 6, 12), 4)
+        assertEquals(
+            listOf(
+                LocalDate.of(2026, 6, 11),
+                LocalDate.of(2026, 6, 4),
+                LocalDate.of(2026, 5, 28),
+                LocalDate.of(2026, 5, 21),
+            ),
+            page,
+        )
+        // The archive floor cuts the listing off rather than paging forever.
+        val tail = fetch.archiveDates(LocalDate.of(2008, 1, 10), 10)
+        assertEquals(listOf(LocalDate.of(2008, 1, 10), LocalDate.of(2008, 1, 3)), tail)
+    }
+
+    @Test
+    fun extractsEveryPuzLinkOnAPageOnceEach() {
+        val fetch = PuzzleSources.byId("beq")!!.fetch as Fetch.LatestFromPage
+        val html = """
+            <a href="/files/1895Marching.puz">Across Lite</a>
+            <a href="/files/1895Marching.puz">again</a>
+            <a href="/files/1894ThemelessMonday.puz">Across Lite</a>
+        """.trimIndent()
+        assertEquals(
+            listOf(
+                "https://www.brendanemmettquigley.com/files/1895Marching.puz",
+                "https://www.brendanemmettquigley.com/files/1894ThemelessMonday.puz",
+            ),
+            PuzzleDownloader.extractAllPuzUrls(html, fetch),
+        )
+    }
+
+    @Test
+    fun humanizesScrapedSlugsForCardTitles() {
+        assertEquals("1894 Themeless Monday", PuzzleDownloader.humanizeSlug("1894ThemelessMonday"))
+        assertEquals(
+            "Puzzle 1201 Freestyle 1122",
+            PuzzleDownloader.humanizeSlug("Puzzle1201Freestyle1122"),
+        )
+        assertEquals("tough as nails 412", PuzzleDownloader.humanizeSlug("tough-as-nails_412"))
+    }
+
+    @Test
     fun scrapedPuzzlesGetStableKeys() {
         assertEquals(
             "1894ThemelessMonday",

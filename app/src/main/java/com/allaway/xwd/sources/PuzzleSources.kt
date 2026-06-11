@@ -12,6 +12,8 @@ sealed interface Fetch {
     data class Dated(
         val publishedOn: Set<DayOfWeek>,
         val urlFor: (LocalDate) -> String,
+        /** Oldest date the feed's archive reaches back to. */
+        val archiveStart: LocalDate = LocalDate.of(2008, 1, 1),
     ) : Fetch {
         /**
          * Candidate dates to try when fetching the latest puzzle, newest first.
@@ -20,6 +22,17 @@ sealed interface Fetch {
         fun candidateDates(today: LocalDate = LocalDate.now(), lookBackDays: Int = 28): List<LocalDate> =
             (-2..lookBackDays).map { today.minusDays(it.toLong()) }
                 .filter { it.dayOfWeek in publishedOn }
+
+        /**
+         * Publication dates for browsing the archive, newest first, starting at
+         * [newestInclusive] and never reaching past [archiveStart].
+         */
+        fun archiveDates(newestInclusive: LocalDate, count: Int): List<LocalDate> =
+            generateSequence(newestInclusive) { it.minusDays(1) }
+                .filter { it.dayOfWeek in publishedOn }
+                .takeWhile { !it.isBefore(archiveStart) }
+                .take(count)
+                .toList()
     }
 
     /** The newest puzzle is discovered by scanning an HTML page. */
@@ -29,6 +42,8 @@ sealed interface Fetch {
         val linkPattern: Regex,
         /** Turns the (HTML-unescaped) capture into an absolute .puz URL. */
         val resolveUrl: (String) -> String = { it },
+        /** URL of older archive pages (page 2, 3, ...), when the site is paginated. */
+        val archivePageUrl: ((Int) -> String)? = null,
     ) : Fetch
 }
 
@@ -68,6 +83,7 @@ object PuzzleSources {
             fetch = Fetch.Dated(
                 publishedOn = setOf(DayOfWeek.THURSDAY),
                 urlFor = { d -> "https://herbach.dnsalias.com/Jonesin/jz${YYMMDD.format(d)}.puz" },
+                archiveStart = LocalDate.of(2008, 1, 3),
             ),
         ),
         PuzzleSource(
@@ -96,6 +112,7 @@ object PuzzleSources {
             fetch = Fetch.LatestFromPage(
                 pageUrl = "https://club72.wordpress.com/",
                 linkPattern = DROPBOX_PUZ,
+                archivePageUrl = { n -> "https://club72.wordpress.com/page/$n/" },
             ),
         ),
         PuzzleSource(
@@ -108,6 +125,7 @@ object PuzzleSources {
             fetch = Fetch.LatestFromPage(
                 pageUrl = "https://toughasnails.net/",
                 linkPattern = DROPBOX_PUZ,
+                archivePageUrl = { n -> "https://toughasnails.net/page/$n/" },
             ),
         ),
         PuzzleSource(

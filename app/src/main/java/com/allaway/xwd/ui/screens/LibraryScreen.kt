@@ -1,22 +1,30 @@
 package com.allaway.xwd.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -29,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -43,16 +52,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.allaway.xwd.data.PuzzleEntity
 import com.allaway.xwd.data.formatSeconds
+import com.allaway.xwd.sources.PuzzleDownloader.CatalogEntry
 import com.allaway.xwd.ui.ImportViewModel
+import com.allaway.xwd.ui.LibraryItem
 import com.allaway.xwd.ui.LibraryViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +82,9 @@ fun LibraryScreen(
     var pendingDelete by remember { mutableStateOf<PuzzleEntity?>(null) }
     val importViewModel: ImportViewModel = viewModel()
 
+    val feed = viewModel.feed(puzzles)
+    val listState = rememberLazyListState()
+
     LaunchedEffect(viewModel.message) {
         viewModel.message?.let {
             snackbar.showSnackbar(it)
@@ -75,23 +92,40 @@ fun LibraryScreen(
         }
     }
 
+    // Load the next slice of the catalog whenever the user nears the end.
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            (last >= info.totalItemsCount - 6) to info.totalItemsCount
+        }
+            .distinctUntilChanged()
+            .collect { (nearEnd, _) -> if (nearEnd) viewModel.loadMore() }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Crosswords") },
+                title = {
+                    Text(
+                        "Crosswords",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                },
                 actions = {
                     IconButton(onClick = { showImportDialog = true }) {
                         Icon(Icons.Outlined.PhotoCamera, contentDescription = "Import from photo")
                     }
                     IconButton(onClick = { showArchiveDialog = true }) {
-                        Icon(Icons.Outlined.Add, contentDescription = "Download from archive")
+                        Icon(Icons.Outlined.CalendarMonth, contentDescription = "Download a specific date")
                     }
                     IconButton(onClick = onOpenStats) {
                         Icon(Icons.Outlined.BarChart, contentDescription = "Statistics")
                     }
                     if (viewModel.downloading) {
                         CircularProgressIndicator(
-                            modifier = Modifier.padding(12.dp).width(24.dp).height(24.dp),
+                            modifier = Modifier.padding(12.dp).size(24.dp),
                             strokeWidth = 2.dp,
                         )
                     } else {
@@ -104,35 +138,48 @@ fun LibraryScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        if (puzzles.isEmpty()) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text("No puzzles yet", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Tap the download button to fetch the latest puzzles from " +
-                        "Jonesin', BEQ, Club 72, Tough as Nails, and the Crosshare " +
-                        "Daily Mini — real puzzles their constructors publish free " +
-                        "for personal solving — or + to pick a date from the " +
-                        "Jonesin' archive.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        } else {
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            SourceFilterRow(viewModel)
+
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(puzzles, key = { it.id }) { puzzle ->
-                    PuzzleCard(
-                        puzzle = puzzle,
-                        onClick = { onOpenPuzzle(puzzle.id) },
-                        onDelete = { pendingDelete = puzzle },
-                    )
+                items(feed, key = { it.id }) { item ->
+                    when (item) {
+                        is LibraryItem.Saved -> SavedPuzzleCard(
+                            puzzle = item.entity,
+                            onClick = { onOpenPuzzle(item.entity.id) },
+                            onDelete = { pendingDelete = item.entity },
+                        )
+                        is LibraryItem.Remote -> RemotePuzzleCard(
+                            entry = item.entry,
+                            sourceName = viewModel.sources
+                                .firstOrNull { it.id == item.entry.sourceId }?.name
+                                ?: item.entry.sourceId,
+                            downloading = item.id in viewModel.downloadingIds,
+                            onDownload = { viewModel.download(item.entry) },
+                        )
+                    }
+                }
+                if (viewModel.loadingMore) {
+                    items(3) { SkeletonCard() }
+                }
+                if (feed.isEmpty() && !viewModel.loadingMore) {
+                    item { EmptyLibrary(allSourcesOff = viewModel.disabledSources.size == viewModel.sources.size) }
+                }
+                if (feed.isNotEmpty() && viewModel.catalogExhausted && !viewModel.loadingMore) {
+                    item {
+                        Text(
+                            "You've reached the beginning of the archives.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                        )
+                    }
                 }
             }
         }
@@ -172,10 +219,28 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun PuzzleCard(puzzle: PuzzleEntity, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun SourceFilterRow(viewModel: LibraryViewModel) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(viewModel.sources, key = { it.id }) { source ->
+            val enabled = source.id !in viewModel.disabledSources
+            FilterChip(
+                selected = enabled,
+                onClick = { viewModel.toggleSource(source.id) },
+                label = { Text(source.name, maxLines = 1) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SavedPuzzleCard(puzzle: PuzzleEntity, onClick: () -> Unit, onDelete: () -> Unit) {
     Card(onClick = onClick) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+            modifier = Modifier.fillMaxWidth()
+                .padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -183,29 +248,33 @@ private fun PuzzleCard(puzzle: PuzzleEntity, onClick: () -> Unit, onDelete: () -
                     puzzle.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.height(2.dp))
                 Text(
-                    "${puzzle.sourceName} · ${puzzle.date}" +
-                        (if (puzzle.author.isNotBlank()) " · ${puzzle.author}" else ""),
+                    listOf(puzzle.sourceName, puzzle.date, puzzle.author)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 if (puzzle.isCompleted) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Filled.CheckCircle,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.width(18.dp).height(18.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
                             "Solved in ${formatSeconds(puzzle.elapsedSeconds)}",
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 } else {
@@ -219,16 +288,110 @@ private fun PuzzleCard(puzzle: PuzzleEntity, onClick: () -> Unit, onDelete: () -
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "${(fraction * 100).toInt()}% · ${formatSeconds(puzzle.elapsedSeconds)}",
+                            if (fraction == 0f) "Not started"
+                            else "${(fraction * 100).toInt()}% · ${formatSeconds(puzzle.elapsedSeconds)}",
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Outlined.Delete, contentDescription = "Delete")
+                Icon(
+                    Icons.Outlined.Delete,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun RemotePuzzleCard(
+    entry: CatalogEntry,
+    sourceName: String,
+    downloading: Boolean,
+    onDownload: () -> Unit,
+) {
+    OutlinedCard(onClick = onDownload, enabled = !downloading) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    entry.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    listOfNotNull(sourceName, entry.date?.toString())
+                        .joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (downloading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.padding(12.dp).size(24.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                IconButton(onClick = onDownload) {
+                    Icon(
+                        Icons.Outlined.FileDownload,
+                        contentDescription = "Download ${entry.title}",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Placeholder card matching the feed card shape while the catalog loads. */
+@Composable
+private fun SkeletonCard() {
+    val tone = MaterialTheme.colorScheme.surfaceVariant
+    OutlinedCard {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Box(
+                Modifier.fillMaxWidth(0.55f).height(16.dp)
+                    .background(tone, RoundedCornerShape(4.dp)),
+            )
+            Spacer(Modifier.height(8.dp))
+            Box(
+                Modifier.fillMaxWidth(0.35f).height(12.dp)
+                    .background(tone, RoundedCornerShape(4.dp)),
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyLibrary(allSourcesOff: Boolean) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 48.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("No puzzles here", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (allSourcesOff) {
+                "All sources are turned off. Turn one back on above to browse its puzzles."
+            } else {
+                "Puzzles from Jonesin', BEQ, Club 72, Tough as Nails, and the Crosshare " +
+                    "Daily Mini will appear here as they're found. Tap a card to download it."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
