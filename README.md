@@ -17,6 +17,9 @@ personal solving:
 | Club 72 (Tim Croce) | Tue & Fri | Freestyle puzzles the constructor posts free on his own blog as `.puz` downloads |
 | Tough as Nails (Stella Zawistowski) | ~weekly | Hard themeless puzzles the constructor posts free on her own site as `.puz` downloads |
 | Crosshare Daily Mini | daily | Community constructors publish on Crosshare, a free, open-source, donation-funded platform, expressly for free public solving; the platform provides the `.puz` export API |
+| Muller Monthly Music Meta (Pete Muller) | monthly (first Tue) | Award-winning meta contest the constructor publishes free on his own site (pmxwords.com), supported by donations |
+| Square Pursuit (Steve Mossberg) | irregular | Cryptics and themed crosswords the constructor posts free on his own blog as `.puz` downloads |
+| JKL Crosswords (Jesse Lansner) | irregular | Crosswords the constructor posts free on his own site as `.puz`/`.ipuz` downloads |
 
 Commercial syndicated puzzles (NYT, WSJ, LA Times, Universal, Newsday, …)
 are deliberately **not** included: they are copyrighted works licensed to
@@ -36,10 +39,13 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
   Jonesin' archive) without downloading anything, and each card downloads on
   tap. Sources can be toggled on and off, the latest from every source still
   comes down with one tap, and any past Jonesin' date can be picked from the
-  calendar. Downloaded cards show fill progress, solve time, and completion.
+  calendar. Downloaded cards show fill progress, solve time, completion, and
+  a grid-size badge (Mini / Midi / Maxi / Supermaxi / Ultramaxi).
 - **Solving** — tap to select, tap again to flip Across/Down, built-in
   keyboard, clue bar with prev/next navigation, full clue list sheet, circled
-  squares (GEXT) support.
+  squares (GEXT) support. Grids too large to fit the screen at a readable
+  cell size render full-size inside a two-axis pan that keeps the selected
+  square in view.
 - **Error highlighting** — an *Autocheck* mode that marks every incorrect
   entry with red text and a slash (NYT-style), plus on-demand
   Check letter / word / puzzle and Reveal letter / word / puzzle.
@@ -51,7 +57,8 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
   Requires your own Claude API key (stored only on the device); AI-imported
   puzzles are clearly labeled since the reconstructed solution may contain
   errors.
-- **Metrics** — per-puzzle solve timer that persists across sessions, and a
+- **Metrics** — per-puzzle solve timer that persists across sessions and
+  auto-pauses after 20 seconds of inactivity (resuming on input), and a
   stats screen with: puzzles solved, clean (assistance-free) solves, total /
   average / best solve times, average grid size and time-per-square, 3×3
   heatmaps of where in the grid your solves start and finish, a
@@ -62,9 +69,12 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
 - Kotlin + Jetpack Compose (Material 3), single-activity, Compose Navigation.
 - The grid is a custom `Canvas` composable
   ([`CrosswordGrid.kt`](app/src/main/java/com/allaway/xwd/ui/grid/CrosswordGrid.kt)).
-- Across Lite binary format parser with no Android dependencies
-  ([`PuzParser.kt`](app/src/main/java/com/allaway/xwd/puz/PuzParser.kt)),
-  covered by JVM unit tests that synthesize `.puz` files in memory.
+- Parsers for both crossword file formats, with no Android dependencies and
+  covered by JVM unit tests: the Across Lite binary format
+  ([`PuzParser.kt`](app/src/main/java/com/allaway/xwd/puz/PuzParser.kt),
+  tested against `.puz` files synthesized in memory) and the ipuz JSON
+  format ([`IpuzParser.kt`](app/src/main/java/com/allaway/xwd/puz/IpuzParser.kt));
+  downloads auto-detect the format by content.
 - Room database stores each puzzle (as JSON), the solver's grid, elapsed
   time, and assistance metrics; OkHttp handles downloads.
 - Photo import uses the official Anthropic Java SDK: one streaming Messages

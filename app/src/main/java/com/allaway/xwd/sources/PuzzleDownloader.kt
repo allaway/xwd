@@ -1,7 +1,7 @@
 package com.allaway.xwd.sources
 
 import com.allaway.xwd.model.Puzzle
-import com.allaway.xwd.puz.PuzParser
+import com.allaway.xwd.puz.PuzzleFormats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -84,7 +84,7 @@ class PuzzleDownloader(
     suspend fun fetchEntry(source: PuzzleSource, entry: CatalogEntry): Downloaded? {
         val referer = (source.fetch as? Fetch.LatestFromPage)?.pageUrl
         val bytes = getBytes(entry.url, source.name, referer = referer) ?: return null
-        return Downloaded(PuzParser.parse(bytes), entry.date ?: LocalDate.now(), entry.uniqueKey)
+        return Downloaded(PuzzleFormats.parse(bytes), entry.date ?: LocalDate.now(), entry.uniqueKey)
     }
 
     /** Fetch the puzzle of a dated source for a specific day, or null if absent. */
@@ -92,7 +92,7 @@ class PuzzleDownloader(
         val fetch = source.fetch as? Fetch.Dated
             ?: throw IllegalArgumentException("${source.name} has no per-date archive")
         val bytes = getBytes(fetch.urlFor(date), source.name) ?: return null
-        return Downloaded(PuzParser.parse(bytes), date, date.toString())
+        return Downloaded(PuzzleFormats.parse(bytes), date, date.toString())
     }
 
     /**
@@ -124,7 +124,7 @@ class PuzzleDownloader(
         val key = puzUrlKey(url)
         if (key in alreadyHave) return null
         val bytes = getBytes(url, source.name, referer = fetch.pageUrl) ?: return null
-        return Downloaded(PuzParser.parse(bytes), LocalDate.now(), key)
+        return Downloaded(PuzzleFormats.parse(bytes), LocalDate.now(), key)
     }
 
     private suspend fun getBytes(url: String, sourceName: String, referer: String? = null): ByteArray? =
@@ -177,6 +177,7 @@ class PuzzleDownloader(
 
         /** Stable identity for a scraped puzzle: its file name without extension. */
         fun puzUrlKey(url: String): String =
-            url.substringBefore('?').substringAfterLast('/').removeSuffix(".puz")
+            url.substringBefore('?').substringAfterLast('/')
+                .removeSuffix(".ipuz").removeSuffix(".puz")
     }
 }

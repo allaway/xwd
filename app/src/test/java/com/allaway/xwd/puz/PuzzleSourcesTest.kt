@@ -122,6 +122,43 @@ class PuzzleSourcesTest {
     }
 
     @Test
+    fun genericPatternMatchesPuzAndIpuzButNotLookalikes() {
+        val fetch = PuzzleSources.byId("jkl")!!.fetch as Fetch.LatestFromPage
+        val html = """
+            <a href="https://jklcrosswords.com/files/puzzle-41.ipuz">ipuz</a>
+            <a href="/files/puzzle-42.puz?v=2">puz</a>
+            <a href="/files/puzzle-41.puz">same puzzle, other format</a>
+            <a href="https://crossword.puzzlesociety.com/daily">not a file</a>
+        """.trimIndent()
+        // The .puz twin of puzzle-41 dedupes away (same key as the .ipuz).
+        assertEquals(
+            listOf(
+                "https://jklcrosswords.com/files/puzzle-41.ipuz",
+                "https://jklcrosswords.com/files/puzzle-42.puz?v=2",
+            ),
+            PuzzleDownloader.extractAllPuzUrls(html, fetch),
+        )
+    }
+
+    @Test
+    fun newSourcesResolveRelativeLinks() {
+        val fetch = PuzzleSources.byId("mmmm")!!.fetch as Fetch.LatestFromPage
+        val html = """<a href="/wp-content/uploads/2026/06/meta6.puz">Across Lite</a>"""
+        assertEquals(
+            "https://pmxwords.com/wp-content/uploads/2026/06/meta6.puz",
+            PuzzleDownloader.extractLatestPuzUrl(html, fetch),
+        )
+    }
+
+    @Test
+    fun ipuzUrlsGetStableKeysToo() {
+        assertEquals(
+            "puzzle-41",
+            PuzzleDownloader.puzUrlKey("https://jklcrosswords.com/files/puzzle-41.ipuz"),
+        )
+    }
+
+    @Test
     fun scrapedPuzzlesGetStableKeys() {
         assertEquals(
             "1894ThemelessMonday",
