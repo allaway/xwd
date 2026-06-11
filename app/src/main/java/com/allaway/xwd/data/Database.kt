@@ -11,6 +11,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "puzzles")
@@ -32,6 +34,10 @@ data class PuzzleEntity(
     val autocheckUsed: Boolean = false,
     val revealCount: Int = 0,
     val checkCount: Int = 0,
+    /** Row-major index of the first cell the solver typed into, once set. */
+    val firstFillCell: Int? = null,
+    /** Row-major index of the most recently typed cell (the last, once solved). */
+    val lastFillCell: Int? = null,
     val addedAt: Long,
 ) {
     val filledCount: Int get() = progress.count { it != '.' && it != '-' }
@@ -66,7 +72,7 @@ interface PuzzleDao {
     suspend fun count(): Int
 }
 
-@Database(entities = [PuzzleEntity::class], version = 1, exportSchema = false)
+@Database(entities = [PuzzleEntity::class], version = 2, exportSchema = false)
 abstract class XwdDatabase : RoomDatabase() {
     abstract fun puzzleDao(): PuzzleDao
 
@@ -74,13 +80,20 @@ abstract class XwdDatabase : RoomDatabase() {
         @Volatile
         private var instance: XwdDatabase? = null
 
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE puzzles ADD COLUMN firstFillCell INTEGER")
+                db.execSQL("ALTER TABLE puzzles ADD COLUMN lastFillCell INTEGER")
+            }
+        }
+
         fun get(context: Context): XwdDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     XwdDatabase::class.java,
                     "xwd.db",
-                ).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
             }
     }
 }

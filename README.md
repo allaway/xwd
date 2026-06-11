@@ -31,9 +31,12 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
 
 ## Features
 
-- **Library** — download the latest puzzle from every source with one tap, or
-  pick any past date from the Jonesin' archive picker. Cards show fill
-  progress, solve time, and completion.
+- **Library** — a browsable catalog of every source's feed: available puzzles
+  are *listed* (lazy-loaded as you scroll, all the way back through the
+  Jonesin' archive) without downloading anything, and each card downloads on
+  tap. Sources can be toggled on and off, the latest from every source still
+  comes down with one tap, and any past Jonesin' date can be picked from the
+  calendar. Downloaded cards show fill progress, solve time, and completion.
 - **Solving** — tap to select, tap again to flip Across/Down, built-in
   keyboard, clue bar with prev/next navigation, full clue list sheet, circled
   squares (GEXT) support.
@@ -50,8 +53,9 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
   errors.
 - **Metrics** — per-puzzle solve timer that persists across sessions, and a
   stats screen with: puzzles solved, clean (assistance-free) solves, total /
-  average / best solve times, current and longest daily solve streaks, and a
-  per-source breakdown.
+  average / best solve times, average grid size and time-per-square, 3×3
+  heatmaps of where in the grid your solves start and finish, a
+  day-of-week solving rhythm chart, and a per-source breakdown.
 
 ## Architecture
 

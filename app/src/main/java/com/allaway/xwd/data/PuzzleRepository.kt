@@ -34,6 +34,13 @@ class PuzzleRepository(
         return store(source, downloaded)
     }
 
+    /** Download a puzzle listed in the catalog. Null if the file has vanished from the feed. */
+    suspend fun downloadEntry(source: PuzzleSource, entry: PuzzleDownloader.CatalogEntry): PuzzleEntity? {
+        dao.get("${source.id}-${entry.uniqueKey}")?.let { return it }
+        val downloaded = downloader.fetchEntry(source, entry) ?: return null
+        return store(source, downloaded)
+    }
+
     /** Download the puzzle for a specific date (dated sources only). Null if the feed has none. */
     suspend fun downloadFor(source: PuzzleSource, date: LocalDate): PuzzleEntity? {
         val existingId = "${source.id}-$date"
