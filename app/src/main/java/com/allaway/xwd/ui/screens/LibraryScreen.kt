@@ -407,8 +407,8 @@ private fun EmptyLibrary(allSourcesOff: Boolean) {
             if (allSourcesOff) {
                 "All sources are turned off. Turn one back on above to browse its puzzles."
             } else {
-                "Puzzles from Jonesin', BEQ, Club 72, Tough as Nails, and the Crosshare " +
-                    "Daily Mini will appear here as they're found. Tap a card to download it."
+                "Puzzles from your enabled sources will appear here as they're " +
+                    "found. Tap a card to download one and start solving."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

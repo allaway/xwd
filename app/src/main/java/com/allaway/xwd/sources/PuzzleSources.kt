@@ -72,6 +72,21 @@ object PuzzleSources {
     /** Dropbox share links as used on WordPress blogs (Club 72, Tough as Nails). */
     private val DROPBOX_PUZ = Regex("href=\"(https://www\\.dropbox\\.com/[^\"]*\\.puz[^\"]*)\"")
 
+    /** Any direct .puz or .ipuz link, with an optional query string. */
+    private val ANY_PUZ = Regex("href=\"([^\"]+\\.i?puz(?:[?#][^\"]*)?)\"")
+
+    /** Resolves scraped hrefs (absolute, site-rooted, or relative) against a page URL. */
+    private fun resolver(pageUrl: String): (String) -> String {
+        val origin = Regex("^(https?://[^/]+)").find(pageUrl)?.groupValues?.get(1) ?: pageUrl
+        return { href ->
+            when {
+                href.startsWith("http") -> href
+                href.startsWith("/") -> origin + href
+                else -> pageUrl.trimEnd('/') + "/" + href
+            }
+        }
+    }
+
     val all: List<PuzzleSource> = listOf(
         PuzzleSource(
             id = "jonesin",
@@ -126,6 +141,49 @@ object PuzzleSources {
                 pageUrl = "https://toughasnails.net/",
                 linkPattern = DROPBOX_PUZ,
                 archivePageUrl = { n -> "https://toughasnails.net/page/$n/" },
+            ),
+        ),
+        PuzzleSource(
+            id = "mmmm",
+            name = "Muller Music Meta",
+            attribution = "Muller Monthly Music Meta by Pete Muller, one meta crossword a month.",
+            licenseBasis = "Published free by the constructor on his own site " +
+                "(pmxwords.com), supported by donations and an optional leaderboard. " +
+                "Free for personal, non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                pageUrl = "https://pmxwords.com/",
+                linkPattern = ANY_PUZ,
+                resolveUrl = resolver("https://pmxwords.com/"),
+                archivePageUrl = { n -> "https://pmxwords.com/page/$n/" },
+            ),
+        ),
+        PuzzleSource(
+            id = "squarepursuit",
+            name = "Square Pursuit",
+            attribution = "Crosswords by Steve Mossberg.",
+            licenseBasis = "Published free by the constructor on his own blog " +
+                "(squarepursuit.com) as .puz downloads. Free for personal, " +
+                "non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                pageUrl = "https://squarepursuit.com/",
+                linkPattern = ANY_PUZ,
+                resolveUrl = resolver("https://squarepursuit.com/"),
+                archivePageUrl = { n -> "https://squarepursuit.com/page/$n/" },
+            ),
+        ),
+        PuzzleSource(
+            id = "jkl",
+            name = "JKL Crosswords",
+            attribution = "Crosswords by Jesse Lansner.",
+            licenseBasis = "Published free by the constructor on his own site " +
+                "(jklcrosswords.com) as .puz and .ipuz downloads. Free for " +
+                "personal, non-commercial solving.",
+            fetch = Fetch.LatestFromPage(
+                pageUrl = "https://jklcrosswords.com/",
+                linkPattern = ANY_PUZ,
+                resolveUrl = resolver("https://jklcrosswords.com/"),
+                // The site uses /index.php/ permalinks for its archive pages.
+                archivePageUrl = { n -> "https://jklcrosswords.com/index.php/page/$n/" },
             ),
         ),
         PuzzleSource(
