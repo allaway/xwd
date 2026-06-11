@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.allaway.xwd.data.PuzzleEntity
 import com.allaway.xwd.data.formatSeconds
+import com.allaway.xwd.model.SizeClass
 import com.allaway.xwd.sources.PuzzleDownloader.CatalogEntry
 import com.allaway.xwd.ui.ImportViewModel
 import com.allaway.xwd.ui.LibraryItem
@@ -108,7 +109,7 @@ fun LibraryScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Crosswords",
+                        "xwd",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                     )
@@ -252,15 +253,19 @@ private fun SavedPuzzleCard(puzzle: PuzzleEntity, onClick: () -> Unit, onDelete:
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    listOf(puzzle.sourceName, puzzle.date, puzzle.author)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SizePill(SizeClass.forCellCount(puzzle.progress.length).label)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        listOf(puzzle.sourceName, puzzle.date, puzzle.author)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 if (puzzle.isCompleted) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -353,6 +358,22 @@ private fun RemotePuzzleCard(
             }
         }
     }
+}
+
+/** Tiny tonal badge naming the grid's size class (Mini .. Ultramaxi). */
+@Composable
+private fun SizePill(label: String) {
+    Text(
+        label,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier
+            .background(
+                MaterialTheme.colorScheme.secondaryContainer,
+                RoundedCornerShape(6.dp),
+            )
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    )
 }
 
 /** Placeholder card matching the feed card shape while the catalog loads. */

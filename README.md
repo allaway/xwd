@@ -36,10 +36,13 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
   Jonesin' archive) without downloading anything, and each card downloads on
   tap. Sources can be toggled on and off, the latest from every source still
   comes down with one tap, and any past Jonesin' date can be picked from the
-  calendar. Downloaded cards show fill progress, solve time, and completion.
+  calendar. Downloaded cards show fill progress, solve time, completion, and
+  a grid-size badge (Mini / Midi / Maxi / Supermaxi / Ultramaxi).
 - **Solving** — tap to select, tap again to flip Across/Down, built-in
   keyboard, clue bar with prev/next navigation, full clue list sheet, circled
-  squares (GEXT) support.
+  squares (GEXT) support. Grids too large to fit the screen at a readable
+  cell size render full-size inside a two-axis pan that keeps the selected
+  square in view.
 - **Error highlighting** — an *Autocheck* mode that marks every incorrect
   entry with red text and a slash (NYT-style), plus on-demand
   Check letter / word / puzzle and Reveal letter / word / puzzle.
@@ -51,7 +54,8 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
   Requires your own Claude API key (stored only on the device); AI-imported
   puzzles are clearly labeled since the reconstructed solution may contain
   errors.
-- **Metrics** — per-puzzle solve timer that persists across sessions, and a
+- **Metrics** — per-puzzle solve timer that persists across sessions and
+  auto-pauses after 20 seconds of inactivity (resuming on input), and a
   stats screen with: puzzles solved, clean (assistance-free) solves, total /
   average / best solve times, average grid size and time-per-square, 3×3
   heatmaps of where in the grid your solves start and finish, a

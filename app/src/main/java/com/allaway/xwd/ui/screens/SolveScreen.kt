@@ -1,15 +1,20 @@
 package com.allaway.xwd.ui.screens
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -44,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -55,6 +61,33 @@ import com.allaway.xwd.ui.SolveViewModel
 import com.allaway.xwd.ui.grid.CrosswordGrid
 import com.allaway.xwd.ui.grid.CrosswordKeyboard
 import kotlinx.coroutines.delay
+
+/**
+ * Smallest readable/tappable cell. Grids that can't fit the screen at this
+ * size (supermaxi and up on most phones) render at exactly this size inside
+ * a two-axis pan instead of shrinking further.
+ */
+private val MinSolveCell = 22.dp
+
+/**
+ * Scroll one axis just far enough that the cell spanning
+ * [edge, edge + cellPx] is visible with a cell of margin.
+ */
+private suspend fun scrollCellIntoView(
+    scroll: ScrollState,
+    edge: Float,
+    cellPx: Float,
+    contentPx: Float,
+) {
+    if (scroll.maxValue == Int.MAX_VALUE) return // not yet measured
+    val viewport = contentPx - scroll.maxValue
+    val target = when {
+        edge - cellPx < scroll.value -> edge - cellPx
+        edge + 2 * cellPx > scroll.value + viewport -> edge + 2 * cellPx - viewport
+        else -> return
+    }
+    scroll.animateScrollTo(target.toInt().coerceIn(0, scroll.maxValue))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,7 +116,8 @@ fun SolveScreen(viewModel: SolveViewModel, onBack: () -> Unit) {
                         )
                         Text(
                             formatSeconds(viewModel.elapsedSeconds) +
-                                if (viewModel.autocheck) "  ·  Autocheck on" else "",
+                                (if (viewModel.timerPaused) "  ·  Paused" else "") +
+                                (if (viewModel.autocheck) "  ·  Autocheck on" else ""),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -139,25 +173,64 @@ fun SolveScreen(viewModel: SolveViewModel, onBack: () -> Unit) {
                     )
                 }
             }
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(8.dp),
-                contentAlignment = Alignment.Center,
             ) {
-                CrosswordGrid(
-                    puzzle = puzzle,
-                    letters = viewModel.letters,
-                    selected = viewModel.selected,
-                    currentWord = viewModel.currentWord,
-                    isWrong = viewModel::isWrong,
-                    revealed = viewModel.revealed,
-                    onCellTap = viewModel::selectCell,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(puzzle.width.toFloat() / puzzle.height),
-                )
+                val fitCell = minOf(maxWidth / puzzle.width, maxHeight / puzzle.height)
+                if (fitCell >= MinSolveCell) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CrosswordGrid(
+                            puzzle = puzzle,
+                            letters = viewModel.letters,
+                            selected = viewModel.selected,
+                            currentWord = viewModel.currentWord,
+                            isWrong = viewModel::isWrong,
+                            revealed = viewModel.revealed,
+                            onCellTap = viewModel::selectCell,
+                            modifier = Modifier.size(fitCell * puzzle.width, fitCell * puzzle.height),
+                        )
+                    }
+                } else {
+                    // Grid too large to fit at a readable size: render at a
+                    // fixed cell size and pan, keeping the selection in view.
+                    val hScroll = rememberScrollState()
+                    val vScroll = rememberScrollState()
+                    val density = LocalDensity.current
+                    LaunchedEffect(viewModel.selected) {
+                        val cellPx = with(density) { MinSolveCell.toPx() }
+                        scrollCellIntoView(
+                            hScroll, puzzle.colOf(viewModel.selected) * cellPx,
+                            cellPx, puzzle.width * cellPx,
+                        )
+                        scrollCellIntoView(
+                            vScroll, puzzle.rowOf(viewModel.selected) * cellPx,
+                            cellPx, puzzle.height * cellPx,
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .horizontalScroll(hScroll)
+                            .verticalScroll(vScroll),
+                    ) {
+                        CrosswordGrid(
+                            puzzle = puzzle,
+                            letters = viewModel.letters,
+                            selected = viewModel.selected,
+                            currentWord = viewModel.currentWord,
+                            isWrong = viewModel::isWrong,
+                            revealed = viewModel.revealed,
+                            onCellTap = viewModel::selectCell,
+                            modifier = Modifier.size(
+                                MinSolveCell * puzzle.width,
+                                MinSolveCell * puzzle.height,
+                            ),
+                        )
+                    }
+                }
             }
             ClueBar(viewModel)
             CrosswordKeyboard(

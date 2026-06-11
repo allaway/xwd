@@ -19,6 +19,9 @@ import kotlinx.coroutines.launch
 
 enum class CompletionState { IN_PROGRESS, FILLED_INCORRECT, SOLVED }
 
+/** Idle seconds before the solve clock pauses itself. */
+private const val IDLE_PAUSE_SECONDS = 20
+
 class SolveViewModel(application: Application, private val puzzleId: String) :
     AndroidViewModel(application) {
 
@@ -40,6 +43,9 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
         private set
     var elapsedSeconds: Long by mutableStateOf(0L)
         private set
+    /** True when the solve clock has stopped after [IDLE_PAUSE_SECONDS] without input. */
+    var timerPaused: Boolean by mutableStateOf(false)
+        private set
     var completionState: CompletionState by mutableStateOf(CompletionState.IN_PROGRESS)
         private set
     var showCompletionDialog: Boolean by mutableStateOf(false)
@@ -50,6 +56,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
 
     private var entity: PuzzleEntity? = null
     private var dismissedIncorrectFill = false
+    private var secondsSinceActivity = 0
 
     init {
         viewModelScope.launch {
@@ -84,6 +91,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
 
     fun selectCell(index: Int) {
         val p = puzzle ?: return
+        noteActivity()
         if (p.cells[index].isBlock) return
         if (index == selected) {
             val flipped = direction.opposite()
@@ -95,6 +103,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     }
 
     fun selectClue(clue: Clue) {
+        noteActivity()
         direction = clue.direction
         selected = clue.cells.firstOrNull { letters[it] == '-' } ?: clue.cells.first()
     }
@@ -106,6 +115,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     fun input(char: Char) {
         if (completionState == CompletionState.SOLVED) return
         val p = puzzle ?: return
+        noteActivity()
         val cell = selected
         setLetter(cell, char.uppercaseChar())
         entity = entity?.let { it.copy(firstFillCell = it.firstFillCell ?: cell, lastFillCell = cell) }
@@ -117,6 +127,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     fun backspace() {
         if (completionState == CompletionState.SOLVED) return
         val p = puzzle ?: return
+        noteActivity()
         if (letters[selected] != '-') {
             setLetter(selected, '-')
         } else {
@@ -154,6 +165,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     }
 
     fun toggleAutocheck() {
+        noteActivity()
         autocheck = !autocheck
         if (autocheck) markAutocheckUsed()
         save()
@@ -168,6 +180,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     private fun check(indices: List<Int>) {
         val p = puzzle ?: return
         if (p.scrambled) return
+        noteActivity()
         val wrong = indices.filter { i ->
             val cell = p.cells[i]
             !cell.isBlock && letters[i] != '-' && letters[i] != cell.solution
@@ -186,6 +199,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     private fun reveal(indices: List<Int>) {
         val p = puzzle ?: return
         if (p.scrambled) return
+        noteActivity()
         var changed = false
         val sb = StringBuilder(letters)
         for (i in indices) {
@@ -207,6 +221,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
 
     fun clearPuzzle() {
         val p = puzzle ?: return
+        noteActivity()
         letters = buildString { p.cells.forEach { append(if (it.isBlock) '.' else '-') } }
         checkedWrong = emptySet()
         revealed = emptySet()
@@ -220,8 +235,19 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
 
     fun tick() {
         if (completionState == CompletionState.SOLVED) return
+        if (secondsSinceActivity >= IDLE_PAUSE_SECONDS) {
+            timerPaused = true
+            return
+        }
+        secondsSinceActivity++
         elapsedSeconds++
         if (elapsedSeconds % 10 == 0L) save()
+    }
+
+    /** Any solver interaction: restarts the idle countdown and resumes a paused clock. */
+    private fun noteActivity() {
+        secondsSinceActivity = 0
+        timerPaused = false
     }
 
     fun dismissCompletionDialog() {
