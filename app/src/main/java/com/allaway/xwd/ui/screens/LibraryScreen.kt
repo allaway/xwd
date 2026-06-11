@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Delete
@@ -77,13 +76,14 @@ fun LibraryScreen(
     onOpenStats: () -> Unit,
 ) {
     val puzzles by viewModel.puzzles.collectAsState()
+    val catalog by viewModel.catalog.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showArchiveDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PuzzleEntity?>(null) }
     val importViewModel: ImportViewModel = viewModel()
 
-    val feed = viewModel.feed(puzzles)
+    val feed = viewModel.feed(puzzles, catalog)
     val listState = rememberLazyListState()
 
     LaunchedEffect(viewModel.message) {
@@ -124,16 +124,6 @@ fun LibraryScreen(
                     IconButton(onClick = onOpenStats) {
                         Icon(Icons.Outlined.BarChart, contentDescription = "Statistics")
                     }
-                    if (viewModel.downloading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(12.dp).size(24.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        IconButton(onClick = { viewModel.downloadLatestFromAll() }) {
-                            Icon(Icons.Filled.Download, contentDescription = "Download latest puzzles")
-                        }
-                    }
                 },
             )
         },
@@ -169,7 +159,12 @@ fun LibraryScreen(
                     items(3) { SkeletonCard() }
                 }
                 if (feed.isEmpty() && !viewModel.loadingMore) {
-                    item { EmptyLibrary(allSourcesOff = viewModel.disabledSources.size == viewModel.sources.size) }
+                    item {
+                        EmptyLibrary(
+                            allSourcesOff = viewModel.disabledSources.size == viewModel.sources.size,
+                            onlyDownloaded = viewModel.showOnlyDownloaded,
+                        )
+                    }
                 }
                 if (feed.isNotEmpty() && viewModel.catalogExhausted && !viewModel.loadingMore) {
                     item {
@@ -225,6 +220,20 @@ private fun SourceFilterRow(viewModel: LibraryViewModel) {
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        item(key = "downloaded-filter") {
+            FilterChip(
+                selected = viewModel.showOnlyDownloaded,
+                onClick = { viewModel.toggleDownloadedFilter() },
+                label = { Text("Downloaded", maxLines = 1) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+        }
         items(viewModel.sources, key = { it.id }) { source ->
             val enabled = source.id !in viewModel.disabledSources
             FilterChip(
@@ -341,6 +350,23 @@ private fun RemotePuzzleCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // Third row mirroring the saved card's progress row, so the
+                // card keeps its exact size when it flips to downloaded.
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.FileDownload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (downloading) "Downloading…" else "Tap to download",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (downloading) {
                 CircularProgressIndicator(
@@ -396,7 +422,7 @@ private fun SkeletonCard() {
 }
 
 @Composable
-private fun EmptyLibrary(allSourcesOff: Boolean) {
+private fun EmptyLibrary(allSourcesOff: Boolean, onlyDownloaded: Boolean) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -404,11 +430,15 @@ private fun EmptyLibrary(allSourcesOff: Boolean) {
         Text("No puzzles here", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(
-            if (allSourcesOff) {
-                "All sources are turned off. Turn one back on above to browse its puzzles."
-            } else {
-                "Puzzles from your enabled sources will appear here as they're " +
-                    "found. Tap a card to download one and start solving."
+            when {
+                onlyDownloaded ->
+                    "Nothing downloaded yet. Turn off the Downloaded filter and " +
+                        "tap a puzzle to download it."
+                allSourcesOff ->
+                    "All sources are turned off. Turn one back on above to browse its puzzles."
+                else ->
+                    "Puzzles from your enabled sources will appear here as they're " +
+                        "found. Tap a card to download one and start solving."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

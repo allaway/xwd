@@ -45,6 +45,44 @@ data class PuzzleEntity(
     val isCompleted: Boolean get() = completedAt != null
 }
 
+/**
+ * A puzzle known to exist in a source's feed: the persistent record of
+ * crosswords available for retrieval, surviving across launches so the
+ * library feed is stable and the background refresher can add to it.
+ */
+@Entity(tableName = "catalog")
+data class CatalogEntity(
+    @PrimaryKey val id: String, // "<sourceId>-<uniqueKey>"
+    val sourceId: String,
+    val uniqueKey: String,
+    val title: String,
+    /** ISO publish date when the feed knows it (dated feeds only). */
+    val date: String?,
+    val url: String,
+    /**
+     * ISO date used to order the feed. The real publish date when known,
+     * otherwise an approximation fixed at discovery time — never updated,
+     * so cards keep their position once listed.
+     */
+    val sortDate: String,
+    val discoveredAt: Long,
+)
+
+@Dao
+interface CatalogDao {
+    @Query("SELECT * FROM catalog")
+    fun observeAll(): Flow<List<CatalogEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(rows: List<CatalogEntity>)
+
+    @Query("SELECT id FROM catalog WHERE id IN (:ids)")
+    suspend fun knownIds(ids: List<String>): List<String>
+
+    @Query("SELECT MIN(sortDate) FROM catalog WHERE sourceId = :sourceId")
+    suspend fun oldestSortDate(sourceId: String): String?
+}
+
 @Dao
 interface PuzzleDao {
     @Query("SELECT * FROM puzzles ORDER BY date DESC, sourceName ASC")
@@ -72,9 +110,10 @@ interface PuzzleDao {
     suspend fun count(): Int
 }
 
-@Database(entities = [PuzzleEntity::class], version = 2, exportSchema = false)
+@Database(entities = [PuzzleEntity::class, CatalogEntity::class], version = 3, exportSchema = false)
 abstract class XwdDatabase : RoomDatabase() {
     abstract fun puzzleDao(): PuzzleDao
+    abstract fun catalogDao(): CatalogDao
 
     companion object {
         @Volatile
@@ -87,13 +126,25 @@ abstract class XwdDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `catalog` (" +
+                        "`id` TEXT NOT NULL, `sourceId` TEXT NOT NULL, " +
+                        "`uniqueKey` TEXT NOT NULL, `title` TEXT NOT NULL, " +
+                        "`date` TEXT, `url` TEXT NOT NULL, `sortDate` TEXT NOT NULL, " +
+                        "`discoveredAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
         fun get(context: Context): XwdDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     XwdDatabase::class.java,
                     "xwd.db",
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
     }
 }

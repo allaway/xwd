@@ -11,6 +11,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.allaway.xwd.data.CatalogRefreshWorker
 import com.allaway.xwd.ui.LibraryViewModel
 import com.allaway.xwd.ui.SolveViewModel
 import com.allaway.xwd.ui.StatsViewModel
@@ -22,6 +23,8 @@ import com.allaway.xwd.ui.theme.XwdTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Keep the catalog of downloadable puzzles fresh twice a day.
+        CatalogRefreshWorker.schedule(applicationContext)
         setContent {
             XwdTheme {
                 XwdApp()

@@ -19,6 +19,31 @@ object Settings {
             .apply()
     }
 
+    private const val KEY_CATALOG_PAGES = "catalog_page_cursors"
+
+    /**
+     * Next archive page to list per scraped source, persisted so browsing
+     * deeper into an archive resumes where it left off across launches.
+     */
+    fun getCatalogPageCursors(context: Context): Map<String, Int> =
+        (
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_CATALOG_PAGES, "") ?: ""
+            )
+            .split(',')
+            .mapNotNull { token ->
+                val (id, page) = token.split(':').takeIf { it.size == 2 } ?: return@mapNotNull null
+                page.toIntOrNull()?.let { id to it }
+            }
+            .toMap()
+
+    fun setCatalogPageCursors(context: Context, cursors: Map<String, Int>) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_CATALOG_PAGES, cursors.entries.joinToString(",") { "${it.key}:${it.value}" })
+            .apply()
+    }
+
     /** Source ids the user has toggled off in the library. Empty = all sources on. */
     fun getDisabledSources(context: Context): Set<String> =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
