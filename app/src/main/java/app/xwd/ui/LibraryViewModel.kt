@@ -49,8 +49,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     var disabledSources: Set<String> by mutableStateOf(Settings.getDisabledSources(application))
         private set
 
-    /** When on, the feed shows only puzzles already on the device. */
-    var showOnlyDownloaded: Boolean by mutableStateOf(false)
+    /** The current positive view filter: everything, downloaded, or one source. */
+    var filter: LibraryFilter by mutableStateOf(LibraryFilter.All)
         private set
 
     var loadingMore: Boolean by mutableStateOf(false)
@@ -75,16 +75,29 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     /** The feed: the catalog joined against saved puzzles, in stable order. */
     fun feed(saved: List<PuzzleEntity>, catalog: List<CatalogEntity>): List<LibraryItem> =
-        LibraryFeed.build(saved, catalog, disabledSources, showOnlyDownloaded)
+        LibraryFeed.build(saved, catalog, disabledSources, filter)
 
-    fun toggleDownloadedFilter() {
-        showOnlyDownloaded = !showOnlyDownloaded
+    fun filterBy(value: LibraryFilter) {
+        filter = value
     }
 
+    /**
+     * Tap on a source name: narrow the feed to just that source. A disabled
+     * source is re-enabled first so the selection actually shows something.
+     */
+    fun selectSource(id: String) {
+        if (id in disabledSources) toggleSource(id)
+        filter = LibraryFilter.Source(id)
+    }
+
+    /** Long-press on a source name: turn the source on/off entirely. */
     fun toggleSource(id: String) {
         disabledSources = if (id in disabledSources) disabledSources - id else disabledSources + id
         Settings.setDisabledSources(getApplication(), disabledSources)
-        if (id !in disabledSources) {
+        if (id in disabledSources) {
+            // Don't leave the view narrowed to a source that's now off.
+            if (filter == LibraryFilter.Source(id)) filter = LibraryFilter.All
+        } else {
             exhausted.remove(id)
             val source = PuzzleSources.byId(id) ?: return
             viewModelScope.launch {
@@ -120,7 +133,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     /** Extend the catalog one page deeper into every enabled source's archive. */
     fun loadMore() {
-        if (loadingMore || showOnlyDownloaded) return
+        if (loadingMore || filter == LibraryFilter.Downloaded) return
         loadingMore = true
         viewModelScope.launch {
             for (source in sources) {

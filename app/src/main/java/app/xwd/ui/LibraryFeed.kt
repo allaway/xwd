@@ -21,6 +21,17 @@ sealed interface LibraryItem {
 }
 
 /**
+ * What the library feed is currently narrowed to. All three are positive
+ * selections: everything, only on-device puzzles, or only one source.
+ * (Disabling a source entirely is separate; see disabledSources.)
+ */
+sealed interface LibraryFilter {
+    data object All : LibraryFilter
+    data object Downloaded : LibraryFilter
+    data class Source(val id: String) : LibraryFilter
+}
+
+/**
  * Builds the library feed from the persisted catalog and the saved puzzles.
  *
  * Ordering is anchored to the catalog's write-once sort dates: a puzzle that
@@ -33,7 +44,7 @@ object LibraryFeed {
         saved: List<PuzzleEntity>,
         catalog: List<CatalogEntity>,
         disabledSources: Set<String>,
-        onlyDownloaded: Boolean,
+        filter: LibraryFilter,
     ): List<LibraryItem> {
         val savedById = saved.associateBy { it.id }
         val catalogIds = catalog.mapTo(HashSet()) { it.id }
@@ -57,9 +68,19 @@ object LibraryFeed {
             items += LibraryItem.Saved(entity, parseDate(entity.date))
         }
 
-        val visible = if (onlyDownloaded) items.filterIsInstance<LibraryItem.Saved>() else items
+        val visible = when (filter) {
+            LibraryFilter.All -> items
+            LibraryFilter.Downloaded -> items.filterIsInstance<LibraryItem.Saved>()
+            is LibraryFilter.Source -> items.filter { it.sourceId == filter.id }
+        }
         return visible.sortedWith(compareByDescending<LibraryItem> { it.sortDate }.thenBy { it.id })
     }
+
+    private val LibraryItem.sourceId: String
+        get() = when (this) {
+            is LibraryItem.Saved -> entity.sourceId
+            is LibraryItem.Remote -> entry.sourceId
+        }
 
     private fun parseDate(iso: String): LocalDate =
         try {

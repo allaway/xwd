@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -60,12 +61,11 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import app.xwd.data.PuzzleEntity
 import app.xwd.data.formatSeconds
 import app.xwd.model.SizeClass
 import app.xwd.sources.PuzzleDownloader.CatalogEntry
-import app.xwd.ui.ImportViewModel
+import app.xwd.ui.LibraryFilter
 import app.xwd.ui.LibraryItem
 import app.xwd.ui.LibraryViewModel
 import app.xwd.ui.theme.DottedRule
@@ -93,10 +93,8 @@ fun LibraryScreen(
     val catalog by viewModel.catalog.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showArchiveDialog by remember { mutableStateOf(false) }
-    var showImportDialog by remember { mutableStateOf(false) }
     var showSkinDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PuzzleEntity?>(null) }
-    val importViewModel: ImportViewModel = viewModel()
 
     val feed = viewModel.feed(puzzles, catalog)
     val listState = rememberLazyListState()
@@ -121,7 +119,6 @@ fun LibraryScreen(
 
     val actions = LibraryActions(
         onOpenPuzzle = onOpenPuzzle,
-        onPhoto = { showImportDialog = true },
         onArchive = { showArchiveDialog = true },
         onStats = onOpenStats,
         onSkins = { showSkinDialog = true },
@@ -143,14 +140,6 @@ fun LibraryScreen(
 
     if (showArchiveDialog) {
         ArchiveDownloadDialog(viewModel = viewModel, onDismiss = { showArchiveDialog = false })
-    }
-
-    if (showImportDialog) {
-        ImportDialog(
-            viewModel = importViewModel,
-            onDismiss = { showImportDialog = false },
-            onOpenPuzzle = onOpenPuzzle,
-        )
     }
 
     if (showSkinDialog) {
@@ -181,7 +170,6 @@ fun LibraryScreen(
 
 private class LibraryActions(
     val onOpenPuzzle: (String) -> Unit,
-    val onPhoto: () -> Unit,
     val onArchive: () -> Unit,
     val onStats: () -> Unit,
     val onSkins: () -> Unit,
@@ -239,7 +227,6 @@ private fun MarginsLibrary(
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 modifier = Modifier.padding(top = 4.dp),
             ) {
-                MarginsAction("photo", actions.onPhoto)
                 MarginsAction("archive", actions.onArchive)
                 MarginsAction("notebook", actions.onStats)
                 MarginsAction("skins", actions.onSkins)
@@ -255,23 +242,19 @@ private fun MarginsLibrary(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            MarginsTab("All", on = !viewModel.showOnlyDownloaded) {
-                if (viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            MarginsTab("All", on = viewModel.filter == LibraryFilter.All) {
+                viewModel.filterBy(LibraryFilter.All)
             }
-            MarginsTab("Downloaded", on = viewModel.showOnlyDownloaded) {
-                if (!viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            MarginsTab("Downloaded", on = viewModel.filter == LibraryFilter.Downloaded) {
+                viewModel.filterBy(LibraryFilter.Downloaded)
             }
             viewModel.sources.forEach { source ->
-                val off = source.id in viewModel.disabledSources
-                Text(
+                MarginsTab(
                     source.name,
-                    fontSize = 13.sp,
-                    color = if (off) MarginsT.faint else MarginsT.muted,
-                    textDecoration = if (off) TextDecoration.LineThrough else null,
-                    modifier = Modifier
-                        .clickableNoRipple { viewModel.toggleSource(source.id) }
-                        .padding(bottom = 8.dp),
-                    maxLines = 1,
+                    on = viewModel.filter == LibraryFilter.Source(source.id),
+                    off = source.id in viewModel.disabledSources,
+                    onLongClick = { viewModel.toggleSource(source.id) },
+                    onClick = { viewModel.selectSource(source.id) },
                 )
             }
         }
@@ -308,20 +291,41 @@ private fun MarginsLibrary(
 
 @Composable
 private fun MarginsAction(label: String, onClick: () -> Unit) {
-    Column(Modifier.clickableNoRipple(onClick).padding(vertical = 2.dp)) {
-        Text(label, fontSize = 13.sp, fontStyle = FontStyle.Italic, color = MarginsT.muted)
+    // IntrinsicSize.Min keeps the dotted underline exactly as wide as the
+    // label. A bare fillMaxWidth here would swallow the whole actions row,
+    // squeezing the remaining actions to zero width and off the screen.
+    Column(
+        Modifier
+            .width(IntrinsicSize.Min)
+            .clickableNoRipple(onClick)
+            .padding(vertical = 2.dp),
+    ) {
+        Text(label, fontSize = 13.sp, fontStyle = FontStyle.Italic, color = MarginsT.muted, maxLines = 1)
         DottedRule(MarginsT.faint, Modifier.fillMaxWidth().padding(top = 1.dp))
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MarginsTab(label: String, on: Boolean, onClick: () -> Unit) {
-    Column(Modifier.clickableNoRipple(onClick)) {
+private fun MarginsTab(
+    label: String,
+    on: Boolean,
+    off: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    Column(Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Text(
             label,
             fontSize = 13.sp,
-            color = if (on) MarginsT.ink else MarginsT.muted,
+            color = when {
+                on -> MarginsT.ink
+                off -> MarginsT.faint
+                else -> MarginsT.muted
+            },
             fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+            textDecoration = if (off) TextDecoration.LineThrough else null,
+            maxLines = 1,
         )
         Box(
             Modifier
@@ -480,6 +484,7 @@ private fun MarginsSkeleton() {
 
 /* ===================== Skin 02 · Terminal ===================== */
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TermLibrary(
     viewModel: LibraryViewModel,
@@ -499,7 +504,6 @@ private fun TermLibrary(
         ) {
             Text("xwd", color = TermT.green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Box(Modifier.weight(1f).height(1.dp).background(TermT.border))
-            TermBtn("[⌁photo]", actions.onPhoto)
             TermBtn("[☷date]", actions.onArchive)
             TermBtn("[Σstats]", actions.onStats)
             TermBtn("[◐skin]", actions.onSkins)
@@ -507,15 +511,16 @@ private fun TermLibrary(
         // view: ▸all · downloaded
         Row(Modifier.padding(horizontal = 14.dp)) {
             Text("view: ", color = TermT.muted, fontSize = 11.5.sp)
-            TermViewToggle("all", on = !viewModel.showOnlyDownloaded) {
-                if (viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            TermViewToggle("all", on = viewModel.filter == LibraryFilter.All) {
+                viewModel.filterBy(LibraryFilter.All)
             }
             Text(" · ", color = TermT.muted, fontSize = 11.5.sp)
-            TermViewToggle("downloaded", on = viewModel.showOnlyDownloaded) {
-                if (!viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            TermViewToggle("downloaded", on = viewModel.filter == LibraryFilter.Downloaded) {
+                viewModel.filterBy(LibraryFilter.Downloaded)
             }
         }
-        // [x] source toggles.
+        // Source filters: tap to view just one ([▸]); hold to switch a
+        // source off ([ ]) or back on ([x]).
         Row(
             Modifier
                 .fillMaxWidth()
@@ -525,12 +530,20 @@ private fun TermLibrary(
         ) {
             viewModel.sources.forEach { source ->
                 val off = source.id in viewModel.disabledSources
+                val selected = viewModel.filter == LibraryFilter.Source(source.id)
                 Text(
-                    (if (off) "[ ] " else "[x] ") + source.id,
+                    (if (off) "[ ] " else if (selected) "[▸] " else "[x] ") + source.id,
                     fontSize = 11.5.sp,
-                    color = if (off) TermT.offText else TermT.muted,
+                    color = when {
+                        selected -> TermT.green
+                        off -> TermT.offText
+                        else -> TermT.muted
+                    },
                     textDecoration = if (off) TextDecoration.LineThrough else null,
-                    modifier = Modifier.clickableNoRipple { viewModel.toggleSource(source.id) },
+                    modifier = Modifier.combinedClickable(
+                        onClick = { viewModel.selectSource(source.id) },
+                        onLongClick = { viewModel.toggleSource(source.id) },
+                    ),
                 )
             }
         }
@@ -730,7 +743,6 @@ private fun RisoLibrary(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                RisoStamp("photo", 8f, actions.onPhoto)
                 RisoStamp("archive", -6f, actions.onArchive)
                 RisoStamp("stats", 3f, actions.onStats)
                 RisoStamp("skins", -4f, actions.onSkins)
@@ -744,18 +756,19 @@ private fun RisoLibrary(
                 .padding(start = 22.dp, end = 22.dp, top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            RisoChip("all", on = !viewModel.showOnlyDownloaded, off = false) {
-                if (viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            RisoChip("all", on = viewModel.filter == LibraryFilter.All, off = false) {
+                viewModel.filterBy(LibraryFilter.All)
             }
-            RisoChip("downloaded", on = viewModel.showOnlyDownloaded, off = false) {
-                if (!viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            RisoChip("downloaded", on = viewModel.filter == LibraryFilter.Downloaded, off = false) {
+                viewModel.filterBy(LibraryFilter.Downloaded)
             }
             viewModel.sources.forEach { source ->
                 RisoChip(
                     source.name.lowercase(Locale.US),
-                    on = false,
+                    on = viewModel.filter == LibraryFilter.Source(source.id),
                     off = source.id in viewModel.disabledSources,
-                ) { viewModel.toggleSource(source.id) }
+                    onLongClick = { viewModel.toggleSource(source.id) },
+                ) { viewModel.selectSource(source.id) }
             }
         }
 
@@ -809,15 +822,22 @@ private fun RisoStamp(label: String, rotation: Float, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RisoChip(label: String, on: Boolean, off: Boolean, onClick: () -> Unit) {
+private fun RisoChip(
+    label: String,
+    on: Boolean,
+    off: Boolean,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(99.dp)
     Box(
         Modifier
             .let { if (on) it.offsetShadow(RisoT.blue, shape, dx = 2.5.dp, dy = 2.5.dp) else it }
             .background(if (on) RisoT.pink else Color.Transparent, shape)
             .border(2.dp, if (on) RisoT.pink else RisoT.blue, shape)
-            .clickableNoRipple(onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 13.dp, vertical = 5.dp),
     ) {
         Text(
@@ -1007,10 +1027,12 @@ private fun LazyListScope.emptyAndEndNotes(
         item {
             Text(
                 when {
-                    viewModel.showOnlyDownloaded ->
+                    viewModel.filter == LibraryFilter.Downloaded ->
                         "Nothing downloaded yet. Switch the view back to all, then tap a puzzle to download it."
+                    viewModel.filter is LibraryFilter.Source ->
+                        "Nothing from this source yet — its puzzles will appear here as they’re found."
                     viewModel.disabledSources.size == viewModel.sources.size ->
-                        "All sources are turned off. Turn one back on above to browse its puzzles."
+                        "All sources are turned off. Tap one above to turn it back on."
                     else ->
                         "Puzzles from your enabled sources will appear here as they’re found."
                 },

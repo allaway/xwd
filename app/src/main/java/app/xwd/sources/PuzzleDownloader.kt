@@ -74,7 +74,7 @@ class PuzzleDownloader(
             CatalogEntry(
                 sourceId = source.id,
                 uniqueKey = key,
-                title = humanizeSlug(key),
+                title = catalogTitle(source.name, url, key),
                 date = null,
                 url = url,
             )
@@ -179,6 +179,14 @@ class PuzzleDownloader(
             url.contains('?') -> "$url&dl=1"
             else -> "$url?dl=1"
         }
+
+        /**
+         * Listing title for a catalog entry. Crosshare API URLs carry an
+         * opaque puzzle id, which would "humanize" into gibberish like
+         * "U 4 h 00 q NAL 6 j Iuo BBud Ce" — use the source's name instead.
+         */
+        fun catalogTitle(sourceName: String, url: String, key: String): String =
+            if (url.contains("crosshare.org/api/puz/")) sourceName else humanizeSlug(key)
 
         /** "Puzzle1201Freestyle1122" -> "Puzzle 1201 Freestyle 1122". */
         fun humanizeSlug(slug: String): String =
