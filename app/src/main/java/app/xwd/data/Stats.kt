@@ -1,6 +1,7 @@
 package app.xwd.data
 
 import app.xwd.model.Puzzle
+import app.xwd.model.SizeClass
 import kotlinx.serialization.json.Json
 import java.time.DayOfWeek
 import java.time.Instant
@@ -21,14 +22,27 @@ data class GridInfo(
 )
 
 /**
- * Where in the grid solves tend to start or finish: a 3x3 map of the grid
- * (top-left .. bottom-right), each cell weighted 0..1 relative to the most
- * common region.
+ * Where in the grid solves tend to start or finish: a resolution x resolution
+ * map of the grid (top-left .. bottom-right, row-major), each cell weighted
+ * 0..1 relative to the most common region.
  */
 data class PositionHeatmap(
     val weights: List<Float>,
     val samples: Int,
 )
+
+/**
+ * Start/finish heatmaps for one grid size class. Bigger grids get finer
+ * heatmaps so a Maxi's solve paths aren't squashed into a Mini's 3x3.
+ */
+data class SizeHeatmaps(
+    val sizeClass: SizeClass,
+    val resolution: Int,
+    val start: PositionHeatmap?,
+    val finish: PositionHeatmap?,
+) {
+    val samples: Int get() = maxOf(start?.samples ?: 0, finish?.samples ?: 0)
+}
 
 data class Stats(
     val totalPuzzles: Int,
@@ -44,11 +58,13 @@ data class Stats(
     val averageWhiteCells: Int?,
     /** Average seconds spent per white square across completed puzzles. */
     val secondsPerSquare: Double?,
-    val startHeatmap: PositionHeatmap?,
-    val finishHeatmap: PositionHeatmap?,
+    /** One start/finish heatmap pair per size class that has solves. */
+    val heatmapsBySize: List<SizeHeatmaps>,
     /** Completed-puzzle counts Monday..Sunday. */
     val solvesByDayOfWeek: List<Int>,
     val perSource: List<SourceStats>,
+    /** When the first recorded solve happened, for "since ..." footers. */
+    val firstSolveEpochMillis: Long?,
 )
 
 object StatsCalculator {
@@ -92,9 +108,9 @@ object StatsCalculator {
             secondsPerSquare = solvedWithTime
                 .map { (e, g) -> e.elapsedSeconds.toDouble() / g.whiteCells }
                 .ifEmpty { null }?.average(),
-            startHeatmap = heatmap(withGrid) { it.firstFillCell },
-            finishHeatmap = heatmap(withGrid) { it.lastFillCell },
+            heatmapsBySize = heatmapsBySize(withGrid),
             solvesByDayOfWeek = byDay.toList(),
+            firstSolveEpochMillis = completed.mapNotNull { it.completedAt }.minOrNull(),
             perSource = completed.groupBy { it.sourceName }.map { (name, list) ->
                 SourceStats(
                     sourceName = name,
@@ -106,25 +122,51 @@ object StatsCalculator {
         )
     }
 
-    /** 3x3 region (row-major, 0..8) of a cell within a width x height grid. */
-    fun region(cell: Int, width: Int, height: Int): Int {
+    /**
+     * Heatmap resolution per size class: finer for bigger grids, but always
+     * coarser than the grid itself so the map reads as regions, not cells.
+     */
+    fun heatResolution(size: SizeClass): Int = when (size) {
+        SizeClass.MINI -> 3
+        SizeClass.MIDI -> 5
+        SizeClass.MAXI -> 7
+        SizeClass.SUPERMAXI -> 9
+        SizeClass.ULTRAMAXI -> 11
+    }
+
+    /** Region index (row-major) of a cell within a width x height grid. */
+    fun region(cell: Int, width: Int, height: Int, resolution: Int = 3): Int {
         val row = cell / width
         val col = cell % width
-        val r = (row * 3 / height).coerceIn(0, 2)
-        val c = (col * 3 / width).coerceIn(0, 2)
-        return r * 3 + c
+        val r = (row * resolution / height).coerceIn(0, resolution - 1)
+        val c = (col * resolution / width).coerceIn(0, resolution - 1)
+        return r * resolution + c
     }
+
+    /** One start/finish heatmap pair per size class with position data. */
+    private fun heatmapsBySize(withGrid: List<Pair<PuzzleEntity, GridInfo>>): List<SizeHeatmaps> =
+        withGrid
+            .groupBy { (_, g) -> SizeClass.forDimensions(g.width, g.height) }
+            .mapNotNull { (size, group) ->
+                val resolution = heatResolution(size)
+                val start = heatmap(group, resolution) { it.firstFillCell }
+                val finish = heatmap(group, resolution) { it.lastFillCell }
+                if (start == null && finish == null) null
+                else SizeHeatmaps(size, resolution, start, finish)
+            }
+            .sortedBy { it.sizeClass }
 
     private fun heatmap(
         withGrid: List<Pair<PuzzleEntity, GridInfo>>,
+        resolution: Int,
         cellOf: (PuzzleEntity) -> Int?,
     ): PositionHeatmap? {
-        val counts = IntArray(9)
+        val counts = IntArray(resolution * resolution)
         var samples = 0
         for ((entity, grid) in withGrid) {
             val cell = cellOf(entity) ?: continue
             if (cell !in 0 until grid.width * grid.height) continue
-            counts[region(cell, grid.width, grid.height)]++
+            counts[region(cell, grid.width, grid.height, resolution)]++
             samples++
         }
         if (samples == 0) return null
