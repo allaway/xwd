@@ -110,7 +110,7 @@ interface PuzzleDao {
     suspend fun count(): Int
 }
 
-@Database(entities = [PuzzleEntity::class, CatalogEntity::class], version = 3, exportSchema = false)
+@Database(entities = [PuzzleEntity::class, CatalogEntity::class], version = 4, exportSchema = false)
 abstract class XwdDatabase : RoomDatabase() {
     abstract fun puzzleDao(): PuzzleDao
     abstract fun catalogDao(): CatalogDao
@@ -138,13 +138,25 @@ abstract class XwdDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Crosshare rows were titled with their humanized opaque
+                // puzzle ids ("U 4 h 00 q ..."); repair them in place.
+                db.execSQL(
+                    "UPDATE catalog SET title = 'Crosshare Daily Mini' " +
+                        "WHERE url LIKE '%crosshare.org/api/puz/%'",
+                )
+            }
+        }
+
         fun get(context: Context): XwdDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     XwdDatabase::class.java,
                     "xwd.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .build().also { instance = it }
             }
     }
 }

@@ -252,6 +252,27 @@ class PuzzleSourcesTest {
     }
 
     @Test
+    fun crosshareEntriesAreTitledBySourceNotOpaqueId() {
+        assertEquals(
+            "Crosshare Daily Mini",
+            PuzzleDownloader.catalogTitle(
+                "Crosshare Daily Mini",
+                "https://crosshare.org/api/puz/U4h00qNAL6jIuoBBudCe",
+                "U4h00qNAL6jIuoBBudCe",
+            ),
+        )
+        // Ordinary scraped files keep their humanized slug titles.
+        assertEquals(
+            "1894 Themeless Monday",
+            PuzzleDownloader.catalogTitle(
+                "BEQ",
+                "https://www.brendanemmettquigley.com/files/1894ThemelessMonday.puz",
+                "1894ThemelessMonday",
+            ),
+        )
+    }
+
+    @Test
     fun zippedPuzzlesGetKeysWithoutTheZipExtension() {
         assertEquals(
             "metal-monday-55-themeless",

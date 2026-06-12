@@ -3,6 +3,7 @@ package app.xwd.puz
 import app.xwd.data.CatalogEntity
 import app.xwd.data.PuzzleEntity
 import app.xwd.ui.LibraryFeed
+import app.xwd.ui.LibraryFilter
 import app.xwd.ui.LibraryItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -42,14 +43,14 @@ class LibraryFeedTest {
 
     @Test
     fun downloadingAPuzzleKeepsItsPositionAndId() {
-        val before = LibraryFeed.build(emptyList(), catalog, emptySet(), onlyDownloaded = false)
+        val before = LibraryFeed.build(emptyList(), catalog, emptySet(), filter = LibraryFilter.All)
         // "middle" gets downloaded: its saved row would naively sort by its
         // own (download-day) date and jump to the top. It must not.
         val after = LibraryFeed.build(
             listOf(saved("club72", "middle", date = "2026-06-10")),
             catalog,
             emptySet(),
-            onlyDownloaded = false,
+            filter = LibraryFilter.All,
         )
         assertEquals(before.map { it.id }, after.map { it.id })
         assertEquals(1, after.indexOfFirst { it.id == "club72-middle" })
@@ -62,7 +63,7 @@ class LibraryFeedTest {
             listOf(saved("club72", "middle", date = "2026-06-10")),
             catalog,
             emptySet(),
-            onlyDownloaded = true,
+            filter = LibraryFilter.Downloaded,
         )
         assertEquals(listOf("club72-middle"), feed.map { it.id })
         assertTrue(feed.single() is LibraryItem.Saved)
@@ -74,9 +75,22 @@ class LibraryFeedTest {
             listOf(saved("photo", "snap", date = "2026-06-09")),
             catalog,
             disabledSources = setOf("beq", "photo"),
-            onlyDownloaded = false,
+            filter = LibraryFilter.All,
         )
         assertEquals(listOf("photo-snap", "club72-middle"), feed.map { it.id })
+    }
+
+    @Test
+    fun sourceFilterShowsOnlyThatSourceSavedAndRemote() {
+        val feed = LibraryFeed.build(
+            listOf(saved("beq", "newest", date = "2026-06-10")),
+            catalog,
+            emptySet(),
+            filter = LibraryFilter.Source("beq"),
+        )
+        assertEquals(listOf("beq-newest", "beq-oldest"), feed.map { it.id })
+        assertTrue(feed[0] is LibraryItem.Saved)
+        assertTrue(feed[1] is LibraryItem.Remote)
     }
 
     @Test
@@ -85,7 +99,7 @@ class LibraryFeedTest {
             listOf(saved("jonesin", "2026-06-08", date = "2026-06-08")),
             catalog,
             emptySet(),
-            onlyDownloaded = false,
+            filter = LibraryFilter.All,
         )
         assertEquals(
             listOf("beq-newest", "jonesin-2026-06-08", "club72-middle", "beq-oldest"),
