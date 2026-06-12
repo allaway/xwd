@@ -1,6 +1,12 @@
 package app.xwd.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,35 +20,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.FileDownload
-import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,10 +48,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.xwd.data.PuzzleEntity
 import app.xwd.data.formatSeconds
@@ -66,20 +68,33 @@ import app.xwd.sources.PuzzleDownloader.CatalogEntry
 import app.xwd.ui.ImportViewModel
 import app.xwd.ui.LibraryItem
 import app.xwd.ui.LibraryViewModel
+import app.xwd.ui.theme.DottedRule
+import app.xwd.ui.theme.LocalSkin
+import app.xwd.ui.theme.MarginsT
+import app.xwd.ui.theme.RisoT
+import app.xwd.ui.theme.Skin
+import app.xwd.ui.theme.TermT
+import app.xwd.ui.theme.dashedBorder
+import app.xwd.ui.theme.dashedCircleBorder
+import app.xwd.ui.theme.offsetShadow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel,
     onOpenPuzzle: (String) -> Unit,
     onOpenStats: () -> Unit,
+    onSkinChange: (Skin) -> Unit,
 ) {
     val puzzles by viewModel.puzzles.collectAsState()
     val catalog by viewModel.catalog.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showArchiveDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
+    var showSkinDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PuzzleEntity?>(null) }
     val importViewModel: ImportViewModel = viewModel()
 
@@ -104,88 +119,30 @@ fun LibraryScreen(
             .collect { (nearEnd, _) -> if (nearEnd) viewModel.loadMore() }
     }
 
+    val actions = LibraryActions(
+        onOpenPuzzle = onOpenPuzzle,
+        onPhoto = { showImportDialog = true },
+        onArchive = { showArchiveDialog = true },
+        onStats = onOpenStats,
+        onSkins = { showSkinDialog = true },
+        onDelete = { pendingDelete = it },
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "xwd",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                },
-                actions = {
-                    IconButton(onClick = { showImportDialog = true }) {
-                        Icon(Icons.Outlined.PhotoCamera, contentDescription = "Import from photo")
-                    }
-                    IconButton(onClick = { showArchiveDialog = true }) {
-                        Icon(Icons.Outlined.CalendarMonth, contentDescription = "Download a specific date")
-                    }
-                    IconButton(onClick = onOpenStats) {
-                        Icon(Icons.Outlined.BarChart, contentDescription = "Statistics")
-                    }
-                },
-            )
-        },
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            SourceFilterRow(viewModel)
-
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(feed, key = { it.id }) { item ->
-                    when (item) {
-                        is LibraryItem.Saved -> SavedPuzzleCard(
-                            puzzle = item.entity,
-                            onClick = { onOpenPuzzle(item.entity.id) },
-                            onDelete = { pendingDelete = item.entity },
-                        )
-                        is LibraryItem.Remote -> RemotePuzzleCard(
-                            entry = item.entry,
-                            sourceName = viewModel.sources
-                                .firstOrNull { it.id == item.entry.sourceId }?.name
-                                ?: item.entry.sourceId,
-                            downloading = item.id in viewModel.downloadingIds,
-                            onDownload = { viewModel.download(item.entry) },
-                        )
-                    }
-                }
-                if (viewModel.loadingMore) {
-                    items(3) { SkeletonCard() }
-                }
-                if (feed.isEmpty() && !viewModel.loadingMore) {
-                    item {
-                        EmptyLibrary(
-                            allSourcesOff = viewModel.disabledSources.size == viewModel.sources.size,
-                            onlyDownloaded = viewModel.showOnlyDownloaded,
-                        )
-                    }
-                }
-                if (feed.isNotEmpty() && viewModel.catalogExhausted && !viewModel.loadingMore) {
-                    item {
-                        Text(
-                            "You've reached the beginning of the archives.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                        )
-                    }
-                }
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when (LocalSkin.current) {
+                Skin.MARGINS -> MarginsLibrary(viewModel, feed, listState, actions)
+                Skin.TERMINAL -> TermLibrary(viewModel, feed, catalogSize = catalog.size, listState, actions)
+                Skin.OVERPRINT -> RisoLibrary(viewModel, feed, listState, actions)
             }
         }
     }
 
     if (showArchiveDialog) {
-        ArchiveDownloadDialog(
-            viewModel = viewModel,
-            onDismiss = { showArchiveDialog = false },
-        )
+        ArchiveDownloadDialog(viewModel = viewModel, onDismiss = { showArchiveDialog = false })
     }
 
     if (showImportDialog) {
@@ -193,6 +150,14 @@ fun LibraryScreen(
             viewModel = importViewModel,
             onDismiss = { showImportDialog = false },
             onOpenPuzzle = onOpenPuzzle,
+        )
+    }
+
+    if (showSkinDialog) {
+        SkinPickerDialog(
+            current = LocalSkin.current,
+            onPick = { onSkinChange(it); showSkinDialog = false },
+            onDismiss = { showSkinDialog = false },
         )
     }
 
@@ -214,107 +179,236 @@ fun LibraryScreen(
     }
 }
 
-@Composable
-private fun SourceFilterRow(viewModel: LibraryViewModel) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item(key = "downloaded-filter") {
-            FilterChip(
-                selected = viewModel.showOnlyDownloaded,
-                onClick = { viewModel.toggleDownloadedFilter() },
-                label = { Text("Downloaded", maxLines = 1) },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
-        }
-        items(viewModel.sources, key = { it.id }) { source ->
-            val enabled = source.id !in viewModel.disabledSources
-            FilterChip(
-                selected = enabled,
-                onClick = { viewModel.toggleSource(source.id) },
-                label = { Text(source.name, maxLines = 1) },
-            )
-        }
-    }
-}
+private class LibraryActions(
+    val onOpenPuzzle: (String) -> Unit,
+    val onPhoto: () -> Unit,
+    val onArchive: () -> Unit,
+    val onStats: () -> Unit,
+    val onSkins: () -> Unit,
+    val onDelete: (PuzzleEntity) -> Unit,
+)
+
+private fun LibraryViewModel.sourceName(id: String): String =
+    sources.firstOrNull { it.id == id }?.name ?: id
+
+private fun PuzzleEntity.isClean(): Boolean =
+    !autocheckUsed && revealCount == 0 && checkCount == 0
+
+private fun progressFraction(p: PuzzleEntity): Float =
+    if (p.whiteCount == 0) 0f else p.filledCount.toFloat() / p.whiteCount
+
+private fun todayLine(): String =
+    LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.US))
+
+/* ===================== Skin 01 · Margins ===================== */
 
 @Composable
-private fun SavedPuzzleCard(puzzle: PuzzleEntity, onClick: () -> Unit, onDelete: () -> Unit) {
-    Card(onClick = onClick) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
+private fun MarginsLibrary(
+    viewModel: LibraryViewModel,
+    feed: List<LibraryItem>,
+    listState: LazyListState,
+    actions: LibraryActions,
+) {
+    Column(Modifier.fillMaxSize().background(MarginsT.bg)) {
+        // Masthead: spaced-caps date, italic wordmark, dotted text actions.
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 14.dp)) {
+            Text(
+                todayLine().uppercase(Locale.US),
+                fontSize = 11.sp,
+                letterSpacing = 2.4.sp,
+                color = MarginsT.muted,
+            )
+            Row {
                 Text(
-                    puzzle.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    "xwd",
+                    fontSize = 44.sp,
+                    fontStyle = FontStyle.Italic,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    letterSpacing = (-0.4).sp,
+                    color = MarginsT.ink,
                 )
-                Spacer(Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SizePill(SizeClass.forCellCount(puzzle.progress.length).label)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        listOf(puzzle.sourceName, puzzle.date, puzzle.author)
-                            .filter { it.isNotBlank() }
-                            .joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                Text(
+                    ".",
+                    fontSize = 44.sp,
+                    fontStyle = FontStyle.Italic,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MarginsT.ochre,
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                modifier = Modifier.padding(top = 4.dp),
+            ) {
+                MarginsAction("photo", actions.onPhoto)
+                MarginsAction("archive", actions.onArchive)
+                MarginsAction("notebook", actions.onStats)
+                MarginsAction("skins", actions.onSkins)
+            }
+        }
+        // Tabs: All / Downloaded / sources; struck through when off.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            MarginsTab("All", on = !viewModel.showOnlyDownloaded) {
+                if (viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            }
+            MarginsTab("Downloaded", on = viewModel.showOnlyDownloaded) {
+                if (!viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            }
+            viewModel.sources.forEach { source ->
+                val off = source.id in viewModel.disabledSources
+                Text(
+                    source.name,
+                    fontSize = 13.sp,
+                    color = if (off) MarginsT.faint else MarginsT.muted,
+                    textDecoration = if (off) TextDecoration.LineThrough else null,
+                    modifier = Modifier
+                        .clickableNoRipple { viewModel.toggleSource(source.id) }
+                        .padding(bottom = 8.dp),
+                    maxLines = 1,
+                )
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(MarginsT.divider))
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(feed, key = { it.id }) { item ->
+                when (item) {
+                    is LibraryItem.Saved -> MarginsSavedCard(item.entity, actions)
+                    is LibraryItem.Remote -> MarginsRemoteCard(
+                        item.entry,
+                        sourceName = viewModel.sourceName(item.entry.sourceId),
+                        downloading = item.id in viewModel.downloadingIds,
+                        onDownload = { viewModel.download(item.entry) },
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                if (puzzle.isCompleted) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Filled.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Solved in ${formatSeconds(puzzle.elapsedSeconds)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                } else {
-                    val fraction =
-                        if (puzzle.whiteCount == 0) 0f
-                        else puzzle.filledCount.toFloat() / puzzle.whiteCount
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        LinearProgressIndicator(
-                            progress = { fraction },
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (fraction == 0f) "Not started"
-                            else "${(fraction * 100).toInt()}% · ${formatSeconds(puzzle.elapsedSeconds)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
             }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Outlined.Delete,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (viewModel.loadingMore) {
+                items(3) { MarginsSkeleton() }
+            }
+            emptyAndEndNotes(
+                feed, viewModel,
+                color = MarginsT.muted,
+                endText = "You’ve reached the beginning of the archives.",
+            )
+        }
+    }
+}
+
+@Composable
+private fun MarginsAction(label: String, onClick: () -> Unit) {
+    Column(Modifier.clickableNoRipple(onClick).padding(vertical = 2.dp)) {
+        Text(label, fontSize = 13.sp, fontStyle = FontStyle.Italic, color = MarginsT.muted)
+        DottedRule(MarginsT.faint, Modifier.fillMaxWidth().padding(top = 1.dp))
+    }
+}
+
+@Composable
+private fun MarginsTab(label: String, on: Boolean, onClick: () -> Unit) {
+    Column(Modifier.clickableNoRipple(onClick)) {
+        Text(
+            label,
+            fontSize = 13.sp,
+            color = if (on) MarginsT.ink else MarginsT.muted,
+            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+        )
+        Box(
+            Modifier
+                .padding(top = 3.dp, bottom = 3.dp)
+                .width(26.dp)
+                .height(2.dp)
+                .background(if (on) MarginsT.ochre else Color.Transparent),
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MarginsCardFrame(
+    ghost: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    val shape = RoundedCornerShape(3.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(if (ghost) Color.Transparent else MarginsT.card, shape)
+            .let {
+                if (ghost) it.dashedBorder(MarginsT.cardBorder, shape)
+                else it.border(1.dp, MarginsT.cardBorder, shape)
+            }
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+    ) { content() }
+}
+
+@Composable
+private fun MarginsSavedCard(p: PuzzleEntity, actions: LibraryActions) {
+    MarginsCardFrame(
+        ghost = false,
+        onClick = { actions.onOpenPuzzle(p.id) },
+        onLongClick = { actions.onDelete(p) },
+    ) {
+        Text(
+            p.title,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MarginsT.ink,
+            lineHeight = 24.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            SizePillSkinned(SizeClass.forCellCount(p.progress.length).label)
+            Spacer(Modifier.width(7.dp))
+            Text(
+                listOf(p.sourceName, p.date, p.author).filter { it.isNotBlank() }.joinToString(" · "),
+                fontSize = 12.5.sp,
+                fontStyle = FontStyle.Italic,
+                color = MarginsT.muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (p.isCompleted) {
+            Text(
+                "✓ Solved in ${formatSeconds(p.elapsedSeconds)}" + if (p.isClean()) " — clean" else "",
+                fontSize = 13.sp,
+                color = MarginsT.ochreDeep,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        } else {
+            val fraction = progressFraction(p)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 13.dp)) {
+                // Pencil progress: a dashed baseline with a graphite fill on top.
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    DottedRule(MarginsT.dotted, Modifier.fillMaxWidth())
+                    Box(
+                        Modifier
+                            .fillMaxWidth(fraction)
+                            .height(2.5.dp)
+                            .background(MarginsT.graphite, RoundedCornerShape(2.dp)),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    if (fraction == 0f) "not started"
+                    else "${(fraction * 100).toInt()}% · ${formatSeconds(p.elapsedSeconds)}",
+                    fontSize = 12.sp,
+                    color = MarginsT.muted,
                 )
             }
         }
@@ -322,128 +416,650 @@ private fun SavedPuzzleCard(puzzle: PuzzleEntity, onClick: () -> Unit, onDelete:
 }
 
 @Composable
-private fun RemotePuzzleCard(
+private fun MarginsRemoteCard(
     entry: CatalogEntry,
     sourceName: String,
     downloading: Boolean,
     onDownload: () -> Unit,
 ) {
-    OutlinedCard(onClick = onDownload, enabled = !downloading) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    entry.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    listOfNotNull(sourceName, entry.date?.toString())
-                        .joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                // Third row mirroring the saved card's progress row, so the
-                // card keeps its exact size when it flips to downloaded.
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Outlined.FileDownload,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        if (downloading) "Downloading…" else "Tap to download",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            if (downloading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.padding(12.dp).size(24.dp),
-                    strokeWidth = 2.dp,
-                )
-            } else {
-                IconButton(onClick = onDownload) {
-                    Icon(
-                        Icons.Outlined.FileDownload,
-                        contentDescription = "Download ${entry.title}",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-        }
+    MarginsCardFrame(ghost = true, onClick = onDownload) {
+        Text(
+            entry.title,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MarginsT.ink,
+            lineHeight = 24.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            listOfNotNull(sourceName, entry.date?.toString()).joinToString(" · "),
+            fontSize = 12.5.sp,
+            fontStyle = FontStyle.Italic,
+            color = MarginsT.muted,
+            modifier = Modifier.padding(top = 4.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            if (downloading) "fetching…" else "tap to fetch ↓",
+            fontSize = 13.sp,
+            fontStyle = FontStyle.Italic,
+            color = MarginsT.muted,
+            modifier = Modifier.padding(top = 13.dp),
+        )
     }
 }
 
-/** Tiny tonal badge naming the grid's size class (Mini .. Ultramaxi). */
 @Composable
-private fun SizePill(label: String) {
+private fun SizePillSkinned(label: String) {
+    val (border, text) = when (LocalSkin.current) {
+        Skin.MARGINS -> MarginsT.pillBorder to MarginsT.graphite
+        Skin.TERMINAL -> TermT.keyBorder to TermT.muted
+        Skin.OVERPRINT -> RisoT.blueMuted to RisoT.blueBody
+    }
     Text(
-        label,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSecondaryContainer,
+        label.uppercase(Locale.US),
+        fontSize = 10.sp,
+        letterSpacing = 1.4.sp,
+        color = text,
         modifier = Modifier
-            .background(
-                MaterialTheme.colorScheme.secondaryContainer,
-                RoundedCornerShape(6.dp),
-            )
-            .padding(horizontal = 6.dp, vertical = 1.dp),
+            .border(1.dp, border, RoundedCornerShape(99.dp))
+            .padding(horizontal = 8.dp, vertical = 1.dp),
     )
 }
 
-/** Placeholder card matching the feed card shape while the catalog loads. */
 @Composable
-private fun SkeletonCard() {
-    val tone = MaterialTheme.colorScheme.surfaceVariant
-    OutlinedCard {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Box(
-                Modifier.fillMaxWidth(0.55f).height(16.dp)
-                    .background(tone, RoundedCornerShape(4.dp)),
+private fun MarginsSkeleton() {
+    MarginsCardFrame(ghost = true, onClick = {}) {
+        Box(Modifier.fillMaxWidth(0.55f).height(16.dp).background(MarginsT.divider, RoundedCornerShape(3.dp)))
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth(0.35f).height(12.dp).background(MarginsT.divider, RoundedCornerShape(3.dp)))
+    }
+}
+
+/* ===================== Skin 02 · Terminal ===================== */
+
+@Composable
+private fun TermLibrary(
+    viewModel: LibraryViewModel,
+    feed: List<LibraryItem>,
+    catalogSize: Int,
+    listState: LazyListState,
+    actions: LibraryActions,
+) {
+    Column(Modifier.fillMaxSize().background(TermT.bg)) {
+        // xwd bar: title, rule, amber [actions].
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("xwd", color = TermT.green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Box(Modifier.weight(1f).height(1.dp).background(TermT.border))
+            TermBtn("[⌁photo]", actions.onPhoto)
+            TermBtn("[☷date]", actions.onArchive)
+            TermBtn("[Σstats]", actions.onStats)
+            TermBtn("[◐skin]", actions.onSkins)
+        }
+        // view: ▸all · downloaded
+        Row(Modifier.padding(horizontal = 14.dp)) {
+            Text("view: ", color = TermT.muted, fontSize = 11.5.sp)
+            TermViewToggle("all", on = !viewModel.showOnlyDownloaded) {
+                if (viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            }
+            Text(" · ", color = TermT.muted, fontSize = 11.5.sp)
+            TermViewToggle("downloaded", on = viewModel.showOnlyDownloaded) {
+                if (!viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            }
+        }
+        // [x] source toggles.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            viewModel.sources.forEach { source ->
+                val off = source.id in viewModel.disabledSources
+                Text(
+                    (if (off) "[ ] " else "[x] ") + source.id,
+                    fontSize = 11.5.sp,
+                    color = if (off) TermT.offText else TermT.muted,
+                    textDecoration = if (off) TextDecoration.LineThrough else null,
+                    modifier = Modifier.clickableNoRipple { viewModel.toggleSource(source.id) },
+                )
+            }
+        }
+        // The bordered list panel.
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 14.dp)
+                .border(1.dp, TermT.border, RoundedCornerShape(4.dp)),
+            contentPadding = PaddingValues(vertical = 2.dp),
+        ) {
+            items(feed, key = { it.id }) { item ->
+                when (item) {
+                    is LibraryItem.Saved -> TermSavedRow(item.entity, actions)
+                    is LibraryItem.Remote -> TermRemoteRow(
+                        item.entry,
+                        sourceName = viewModel.sourceName(item.entry.sourceId),
+                        downloading = item.id in viewModel.downloadingIds,
+                        onDownload = { viewModel.download(item.entry) },
+                    )
+                }
+            }
+            if (viewModel.loadingMore) {
+                item {
+                    Text("loading…", color = TermT.dim, fontSize = 11.5.sp, modifier = Modifier.padding(14.dp))
+                }
+            }
+            emptyAndEndNotes(feed, viewModel, color = TermT.dim, endText = "-- end of archives --")
+        }
+        // Mode line.
+        val inProgress = feed.count {
+            it is LibraryItem.Saved && !it.entity.isCompleted && progressFraction(it.entity) > 0f
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .background(TermT.modeBg)
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row {
+                Text("library", color = TermT.green, fontSize = 11.sp)
+                Text(" · ${feed.size} shown · $inProgress in progress", color = TermT.mid, fontSize = 11.sp)
+            }
+            Text("catalog: %,d".format(catalogSize), color = TermT.mid, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun TermBtn(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = TermT.amber,
+        fontSize = 12.sp,
+        modifier = Modifier.clickableNoRipple(onClick).padding(vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun TermViewToggle(label: String, on: Boolean, onClick: () -> Unit) {
+    Text(
+        if (on) "▸$label" else label,
+        color = if (on) TermT.green else TermT.muted,
+        fontSize = 11.5.sp,
+        modifier = Modifier.clickableNoRipple(onClick),
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TermRow(
+    glyph: String,
+    glyphColor: Color,
+    name: String,
+    meta: String,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    secondLine: @Composable () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(glyph, color = glyphColor, fontSize = 12.5.sp, modifier = Modifier.width(20.dp))
+            Text(
+                name,
+                color = TermT.bright,
+                fontSize = 12.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.height(8.dp))
-            Box(
-                Modifier.fillMaxWidth(0.35f).height(12.dp)
-                    .background(tone, RoundedCornerShape(4.dp)),
+            Spacer(Modifier.width(8.dp))
+            Text(meta, color = TermT.dim, fontSize = 11.sp, maxLines = 1)
+        }
+        Row(
+            Modifier.padding(start = 20.dp, top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) { secondLine() }
+    }
+    Box(Modifier.fillMaxWidth().height(1.dp).background(TermT.rowDivider))
+}
+
+private fun termGauge(pct: Int): Pair<String, String> {
+    val full = (pct / 10).coerceIn(0, 10)
+    return "█".repeat(full) to "░".repeat(10 - full)
+}
+
+@Composable
+private fun TermSavedRow(p: PuzzleEntity, actions: LibraryActions) {
+    val meta = listOf(p.sourceName.lowercase(Locale.US), p.date).filter { it.isNotBlank() }.joinToString(" · ")
+    if (p.isCompleted) {
+        TermRow(
+            "✓", TermT.green, p.title.lowercase(Locale.US), meta,
+            onClick = { actions.onOpenPuzzle(p.id) },
+            onLongClick = { actions.onDelete(p) },
+        ) {
+            Text("solved ${formatSeconds(p.elapsedSeconds)}", color = TermT.muted, fontSize = 11.5.sp)
+            if (p.isClean()) Text("clean", color = TermT.amber, fontSize = 11.5.sp)
+        }
+    } else {
+        val pct = (progressFraction(p) * 100).toInt()
+        TermRow(
+            "▸", TermT.amber, p.title.lowercase(Locale.US), meta,
+            onClick = { actions.onOpenPuzzle(p.id) },
+            onLongClick = { actions.onDelete(p) },
+        ) {
+            val (full, empty) = termGauge(pct)
+            Row {
+                Text(full, color = TermT.green, fontSize = 11.5.sp, letterSpacing = 0.5.sp)
+                Text(empty, color = TermT.keyBorder, fontSize = 11.5.sp, letterSpacing = 0.5.sp)
+            }
+            Text("$pct%", color = TermT.muted, fontSize = 11.5.sp)
+            Text(formatSeconds(p.elapsedSeconds), color = TermT.muted, fontSize = 11.5.sp)
+        }
+    }
+}
+
+@Composable
+private fun TermRemoteRow(
+    entry: CatalogEntry,
+    sourceName: String,
+    downloading: Boolean,
+    onDownload: () -> Unit,
+) {
+    val meta = listOfNotNull(sourceName.lowercase(Locale.US), entry.date?.toString()).joinToString(" · ")
+    TermRow("↓", TermT.dim, entry.title.lowercase(Locale.US), meta, onClick = onDownload) {
+        Text(
+            if (downloading) "fetching…" else "tap to fetch · not downloaded",
+            color = TermT.muted,
+            fontSize = 11.5.sp,
+        )
+    }
+}
+
+/* ===================== Skin 03 · Overprint ===================== */
+
+@Composable
+private fun RisoLibrary(
+    viewModel: LibraryViewModel,
+    feed: List<LibraryItem>,
+    listState: LazyListState,
+    actions: LibraryActions,
+) {
+    Column(Modifier.fillMaxSize().background(RisoT.bg)) {
+        // Masthead: off-register wordmark + rubber stamps.
+        Row(
+            Modifier.fillMaxWidth().padding(start = 22.dp, end = 16.dp, top = 12.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column {
+                Text(
+                    "xwd",
+                    style = TextStyle(
+                        shadow = Shadow(color = RisoT.pink.copy(alpha = 0.8f), offset = Offset(6f, 5f)),
+                    ),
+                    fontSize = 52.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-1.6).sp,
+                    lineHeight = 50.sp,
+                    color = RisoT.blue,
+                )
+                Text(
+                    "fresh ink · " + todayLine().substringAfter(", ").lowercase(Locale.US),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.1.sp,
+                    color = RisoT.pinkDeep,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                RisoStamp("photo", 8f, actions.onPhoto)
+                RisoStamp("archive", -6f, actions.onArchive)
+                RisoStamp("stats", 3f, actions.onStats)
+                RisoStamp("skins", -4f, actions.onSkins)
+            }
+        }
+        // Chips: all / downloaded / sources.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(start = 22.dp, end = 22.dp, top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            RisoChip("all", on = !viewModel.showOnlyDownloaded, off = false) {
+                if (viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            }
+            RisoChip("downloaded", on = viewModel.showOnlyDownloaded, off = false) {
+                if (!viewModel.showOnlyDownloaded) viewModel.toggleDownloadedFilter()
+            }
+            viewModel.sources.forEach { source ->
+                RisoChip(
+                    source.name.lowercase(Locale.US),
+                    on = false,
+                    off = source.id in viewModel.disabledSources,
+                ) { viewModel.toggleSource(source.id) }
+            }
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            items(feed, key = { it.id }) { item ->
+                when (item) {
+                    is LibraryItem.Saved -> RisoSavedCard(item.entity, actions)
+                    is LibraryItem.Remote -> RisoRemoteCard(
+                        item.entry,
+                        sourceName = viewModel.sourceName(item.entry.sourceId),
+                        downloading = item.id in viewModel.downloadingIds,
+                        onDownload = { viewModel.download(item.entry) },
+                    )
+                }
+            }
+            if (viewModel.loadingMore) {
+                items(2) { RisoSkeleton() }
+            }
+            emptyAndEndNotes(
+                feed, viewModel,
+                color = RisoT.blueBody,
+                endText = "that’s the whole print run.",
             )
         }
     }
 }
 
 @Composable
-private fun EmptyLibrary(allSourcesOff: Boolean, onlyDownloaded: Boolean) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+private fun RisoStamp(label: String, rotation: Float, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(48.dp)
+            .rotate(rotation)
+            .dashedCircleBorder(RisoT.pinkDeep)
+            .clickableNoRipple(onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Text("No puzzles here", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(8.dp))
         Text(
-            when {
-                onlyDownloaded ->
-                    "Nothing downloaded yet. Turn off the Downloaded filter and " +
-                        "tap a puzzle to download it."
-                allSourcesOff ->
-                    "All sources are turned off. Turn one back on above to browse its puzzles."
-                else ->
-                    "Puzzles from your enabled sources will appear here as they're " +
-                        "found. Tap a card to download one and start solving."
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            label.uppercase(Locale.US),
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+            color = RisoT.pinkDeep,
+            textAlign = TextAlign.Center,
         )
     }
+}
+
+@Composable
+private fun RisoChip(label: String, on: Boolean, off: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(99.dp)
+    Box(
+        Modifier
+            .let { if (on) it.offsetShadow(RisoT.blue, shape, dx = 2.5.dp, dy = 2.5.dp) else it }
+            .background(if (on) RisoT.pink else Color.Transparent, shape)
+            .border(2.dp, if (on) RisoT.pink else RisoT.blue, shape)
+            .clickableNoRipple(onClick)
+            .padding(horizontal = 13.dp, vertical = 5.dp),
+    ) {
+        Text(
+            label,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Bold,
+            color = when {
+                on -> RisoT.paper
+                off -> RisoT.blue.copy(alpha = 0.4f)
+                else -> RisoT.blue
+            },
+            textDecoration = if (off) TextDecoration.LineThrough else null,
+            maxLines = 1,
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RisoCard(
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    stamp: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .offsetShadow(RisoT.pinkShadow, shape, dx = 4.dp, dy = 4.dp)
+            .background(RisoT.paper, shape)
+            .border(2.dp, RisoT.blue, shape)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 15.dp)) { content() }
+        if (stamp) {
+            Text(
+                "SOLVED",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.1.sp,
+                color = RisoT.purple,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 12.dp, end = 14.dp)
+                    .rotate(-7f)
+                    .border(2.5.dp, RisoT.purple, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 9.dp, vertical = 3.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RisoSavedCard(p: PuzzleEntity, actions: LibraryActions) {
+    RisoCard(
+        onClick = { actions.onOpenPuzzle(p.id) },
+        onLongClick = { actions.onDelete(p) },
+        stamp = p.isCompleted,
+    ) {
+        Text(
+            p.title.trim('“', '”', '"'),
+            fontSize = 22.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-0.4).sp,
+            lineHeight = 23.sp,
+            color = RisoT.blue,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(end = if (p.isCompleted) 80.dp else 0.dp),
+        )
+        RisoMeta(
+            p.sourceName,
+            listOf(p.date, p.author, SizeClass.forCellCount(p.progress.length).label)
+                .filter { it.isNotBlank() }.joinToString(" · "),
+        )
+        if (p.isCompleted) {
+            Text(
+                formatSeconds(p.elapsedSeconds) + if (p.isClean()) " — a clean print, no smudges" else "",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = RisoT.purple,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        } else {
+            val fraction = progressFraction(p)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 13.dp)) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(12.dp)
+                        .border(2.dp, RisoT.blue, RoundedCornerShape(99.dp))
+                        .padding(3.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(fraction)
+                            .fillMaxSize()
+                            .background(RisoT.pinkPale, RoundedCornerShape(99.dp)),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "${(fraction * 100).toInt()}%",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RisoT.blue,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RisoMeta(sourceName: String, rest: String) {
+    Row(Modifier.padding(top = 4.dp)) {
+        Text(sourceName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RisoT.pinkDeep, maxLines = 1)
+        if (rest.isNotBlank()) {
+            Text(
+                " · $rest",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = RisoT.blueMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RisoRemoteCard(
+    entry: CatalogEntry,
+    sourceName: String,
+    downloading: Boolean,
+    onDownload: () -> Unit,
+) {
+    RisoCard(onClick = onDownload) {
+        Text(
+            entry.title,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-0.4).sp,
+            lineHeight = 23.sp,
+            color = RisoT.blue,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        RisoMeta(sourceName, entry.date?.toString() ?: "")
+        Text(
+            if (downloading) "↓ pulling a copy…" else "↓ tap to pull a copy",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = RisoT.pinkDeep,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun RisoSkeleton() {
+    RisoCard(onClick = {}) {
+        Box(Modifier.fillMaxWidth(0.55f).height(18.dp).background(RisoT.blueFaint.copy(alpha = 0.4f), RoundedCornerShape(4.dp)))
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth(0.35f).height(12.dp).background(RisoT.blueFaint.copy(alpha = 0.4f), RoundedCornerShape(4.dp)))
+    }
+}
+
+/* ===================== shared bits ===================== */
+
+@Composable
+private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
+    this.clickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        onClick = onClick,
+    )
+
+/** Empty-feed and end-of-archive footnotes, tinted by the calling skin. */
+private fun LazyListScope.emptyAndEndNotes(
+    feed: List<LibraryItem>,
+    viewModel: LibraryViewModel,
+    color: Color,
+    endText: String,
+) {
+    if (feed.isEmpty() && !viewModel.loadingMore) {
+        item {
+            Text(
+                when {
+                    viewModel.showOnlyDownloaded ->
+                        "Nothing downloaded yet. Switch the view back to all, then tap a puzzle to download it."
+                    viewModel.disabledSources.size == viewModel.sources.size ->
+                        "All sources are turned off. Turn one back on above to browse its puzzles."
+                    else ->
+                        "Puzzles from your enabled sources will appear here as they’re found."
+                },
+                color = color,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 48.dp),
+            )
+        }
+    }
+    if (feed.isNotEmpty() && viewModel.catalogExhausted && !viewModel.loadingMore) {
+        item {
+            Text(
+                endText,
+                color = color,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SkinPickerDialog(current: Skin, onPick: (Skin) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Skins") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Skin.entries.forEach { skin ->
+                    FilterChip(
+                        selected = skin == current,
+                        onClick = { onPick(skin) },
+                        label = {
+                            Column(Modifier.padding(vertical = 6.dp)) {
+                                Text(skin.label, fontWeight = FontWeight.SemiBold)
+                                Text(skin.blurb, fontSize = 11.sp, lineHeight = 14.sp)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

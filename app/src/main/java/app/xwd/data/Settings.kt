@@ -19,6 +19,20 @@ object Settings {
             .apply()
     }
 
+    private const val KEY_SKIN = "skin"
+
+    /** The chosen visual skin's enum name; empty until the user picks one. */
+    fun getSkinName(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_SKIN, "") ?: ""
+
+    fun setSkinName(context: Context, name: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_SKIN, name)
+            .apply()
+    }
+
     private const val KEY_CATALOG_PAGES = "catalog_page_cursors"
 
     /**

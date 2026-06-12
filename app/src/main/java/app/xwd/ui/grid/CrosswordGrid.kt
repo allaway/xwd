@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
@@ -16,12 +15,10 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import app.xwd.model.Puzzle
-import app.xwd.ui.theme.BlockColor
-import app.xwd.ui.theme.CurrentWord
-import app.xwd.ui.theme.GridLine
-import app.xwd.ui.theme.RevealedLetter
-import app.xwd.ui.theme.SelectedCell
-import app.xwd.ui.theme.WrongLetter
+import app.xwd.ui.theme.LocalSkin
+import app.xwd.ui.theme.Skin
+import app.xwd.ui.theme.fontFamily
+import app.xwd.ui.theme.gridColors
 import kotlin.math.min
 
 @Composable
@@ -35,6 +32,8 @@ fun CrosswordGrid(
     onCellTap: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val skin = LocalSkin.current
+    val colors = skin.gridColors
     val textMeasurer = rememberTextMeasurer()
     val wordSet = currentWord.toSet()
 
@@ -53,9 +52,14 @@ fun CrosswordGrid(
         val cell = min(size.width / puzzle.width, size.height / puzzle.height)
         val letterStyle = TextStyle(
             fontSize = TextUnit(cell * 0.55f / density, TextUnitType.Sp),
-            fontWeight = FontWeight.Medium,
+            fontWeight = if (skin == Skin.OVERPRINT) FontWeight.Bold else FontWeight.Medium,
+            fontFamily = skin.fontFamily,
         )
-        val numberStyle = TextStyle(fontSize = TextUnit(cell * 0.24f / density, TextUnitType.Sp))
+        val numberStyle = TextStyle(
+            fontSize = TextUnit(cell * 0.24f / density, TextUnitType.Sp),
+            fontFamily = skin.fontFamily,
+            color = colors.number,
+        )
 
         for (i in puzzle.cells.indices) {
             val row = i / puzzle.width
@@ -67,19 +71,35 @@ fun CrosswordGrid(
             val boxSize = Size(cell, cell)
 
             if (c.isBlock) {
-                drawRect(BlockColor, topLeft, boxSize)
+                drawRect(colors.block, topLeft, boxSize)
                 continue
             }
+            val isSelected = i == selected
+            val inWord = i in wordSet
             val background = when {
-                i == selected -> SelectedCell
-                i in wordSet -> CurrentWord
-                else -> Color.White
+                isSelected -> colors.selected
+                inWord -> colors.word
+                else -> colors.paper
             }
             drawRect(background, topLeft, boxSize)
 
+            // Overprint: the current word is "printed" as pink halftone dots.
+            if (inWord && !isSelected && colors.wordHalftone != null) {
+                val step = cell / 4.5f
+                var dy = step / 2
+                while (dy < cell) {
+                    var dx = step / 2
+                    while (dx < cell) {
+                        drawCircle(colors.wordHalftone, radius = cell * 0.055f, center = Offset(x + dx, y + dy))
+                        dx += step
+                    }
+                    dy += step
+                }
+            }
+
             if (c.circled) {
                 drawCircle(
-                    color = GridLine,
+                    color = colors.number,
                     radius = cell * 0.46f,
                     center = Offset(x + cell / 2, y + cell / 2),
                     style = Stroke(width = cell * 0.03f),
@@ -97,9 +117,10 @@ fun CrosswordGrid(
             if (ch != '-' && ch != '.') {
                 val wrong = isWrong(i)
                 val color = when {
-                    wrong -> WrongLetter
-                    i in revealed -> RevealedLetter
-                    else -> Color.Black
+                    wrong -> colors.wrong
+                    i in revealed -> colors.revealed
+                    isSelected -> colors.selectedLetter
+                    else -> colors.letter
                 }
                 val measured = textMeasurer.measure(ch.toString(), letterStyle)
                 drawText(
@@ -113,7 +134,7 @@ fun CrosswordGrid(
                 if (wrong) {
                     // Diagonal slash across the cell, NYT-style error mark.
                     drawLine(
-                        color = WrongLetter,
+                        color = colors.wrong,
                         start = Offset(x + cell * 0.12f, y + cell * 0.88f),
                         end = Offset(x + cell * 0.88f, y + cell * 0.12f),
                         strokeWidth = cell * 0.04f,
@@ -121,14 +142,15 @@ fun CrosswordGrid(
                 }
             }
         }
-        // Grid lines on top.
+        // Grid lines on top; Overprint's two-ink print uses a heavier rule.
+        val stroke = if (skin == Skin.OVERPRINT) 2.5f else 1.5f
         for (col in 0..puzzle.width) {
             val x = col * cell
-            drawLine(GridLine, Offset(x, 0f), Offset(x, puzzle.height * cell), strokeWidth = 1.5f)
+            drawLine(colors.line, Offset(x, 0f), Offset(x, puzzle.height * cell), strokeWidth = stroke)
         }
         for (row in 0..puzzle.height) {
             val y = row * cell
-            drawLine(GridLine, Offset(0f, y), Offset(puzzle.width * cell, y), strokeWidth = 1.5f)
+            drawLine(colors.line, Offset(0f, y), Offset(puzzle.width * cell, y), strokeWidth = stroke)
         }
     }
 }
