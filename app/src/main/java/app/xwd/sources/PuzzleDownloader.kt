@@ -3,6 +3,7 @@ package app.xwd.sources
 import app.xwd.model.Puzzle
 import app.xwd.puz.PuzzleFormats
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -138,13 +139,36 @@ class PuzzleDownloader(
                 .header("Accept", "*/*")
                 .apply { referer?.let { header("Referer", it) } }
                 .build()
-            client.newCall(request).execute().use { response ->
-                when {
-                    response.code == 404 -> null
-                    !response.isSuccessful -> throw IOException("HTTP ${response.code} from $sourceName")
-                    else -> response.body?.bytes() ?: throw IOException("Empty response")
+            var attempt = 0
+            while (true) {
+                // Wait before a retry (rate-limited / transient server error).
+                val retryDelay: Long = try {
+                    client.newCall(request).execute().use { response ->
+                        when {
+                            response.code == 404 -> return@withContext null
+                            response.isSuccessful ->
+                                return@withContext response.body?.bytes()
+                                    ?: throw IOException("Empty response from $sourceName")
+                            HttpRetry.shouldRetry(response.code, attempt) ->
+                                HttpRetry.retryDelayMillis(
+                                    attempt,
+                                    HttpRetry.parseRetryAfter(response.header("Retry-After")),
+                                )
+                            else -> throw HttpStatusException(response.code, sourceName)
+                        }
+                    }
+                } catch (e: HttpStatusException) {
+                    throw e // status already judged non-retryable in the when above
+                } catch (e: IOException) {
+                    // Network blips (incl. read/connect timeouts) are transient; back off and retry.
+                    if (attempt + 1 >= HttpRetry.MAX_NETWORK_ATTEMPTS) throw e
+                    HttpRetry.retryDelayMillis(attempt)
                 }
+                delay(retryDelay)
+                attempt++
             }
+            @Suppress("UNREACHABLE_CODE")
+            null
         }
 
     companion object {

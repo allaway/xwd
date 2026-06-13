@@ -9,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import app.xwd.data.BulkDownload
 import app.xwd.data.CatalogRepository
 import app.xwd.data.CatalogRepository.Companion.toCatalogEntry
+import app.xwd.data.DownloadDiagnostics
+import app.xwd.data.FailureReason
 import app.xwd.data.PuzzleRepository
 import app.xwd.data.Settings
 import app.xwd.data.SourceRegistry
@@ -17,6 +19,7 @@ import app.xwd.sources.CustomFeed
 import app.xwd.sources.PuzzleSource
 import app.xwd.sources.PuzzleSources
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Progress of the "download history" / bulk-download flow. */
@@ -31,7 +34,20 @@ sealed interface BulkState {
 
     data class Downloading(val done: Int, val total: Int, val failed: Int) : BulkState
 
-    data class Finished(val downloaded: Int, val failed: Int) : BulkState
+    /**
+     * Run complete. [failures] breaks the failures down by reason so the user
+     * (and we) can see whether they were rate-limits, timeouts, or genuinely
+     * missing files. Transient ones clear on a retry.
+     */
+    data class Finished(
+        val downloaded: Int,
+        val failures: Map<FailureReason, Int>,
+    ) : BulkState {
+        val failed: Int get() = failures.values.sum()
+        val retryable: Int get() = failures.entries
+            .filter { it.key != FailureReason.NOT_FOUND }
+            .sumOf { it.value }
+    }
 }
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -141,34 +157,46 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** Download every not-yet-downloaded puzzle from enabled sources. */
+    /**
+     * Download every not-yet-downloaded puzzle from enabled sources. Files
+     * already on the device are skipped (they're excluded from [currentPending]
+     * and re-checked in the repository), so this is safe to run repeatedly —
+     * a second run only retries what's still missing.
+     */
     fun downloadPending() {
         if (bulk is BulkState.Scanning || bulk is BulkState.Downloading) return
         bulkJob = viewModelScope.launch {
             val pending = currentPending()
             if (pending.isEmpty()) {
-                bulk = BulkState.Finished(downloaded = 0, failed = 0)
+                bulk = BulkState.Finished(downloaded = 0, failures = emptyMap())
                 return@launch
             }
             val byId = sources.associateBy { it.id }
             var done = 0
-            var failed = 0
+            val failures = linkedMapOf<FailureReason, Int>()
+            fun note(reason: FailureReason) { failures[reason] = (failures[reason] ?: 0) + 1 }
+
             bulk = BulkState.Downloading(done = 0, total = pending.size, failed = 0)
             for (row in pending) {
                 val source = byId[row.sourceId]
                 if (source == null) {
-                    failed++
+                    note(FailureReason.OTHER)
                 } else {
                     try {
-                        if (puzzleRepo.downloadEntry(source, row.toCatalogEntry()) == null) failed++
-                    } catch (_: Exception) {
-                        failed++
+                        if (puzzleRepo.downloadEntry(source, row.toCatalogEntry()) == null) {
+                            note(FailureReason.NOT_FOUND)
+                        }
+                    } catch (e: Exception) {
+                        note(DownloadDiagnostics.classify(e))
                     }
                 }
                 done++
-                bulk = BulkState.Downloading(done = done, total = pending.size, failed = failed)
+                // A short pause keeps us from hammering any one host into
+                // rate-limiting the whole batch.
+                delay(THROTTLE_MS)
+                bulk = BulkState.Downloading(done, total = pending.size, failed = failures.values.sum())
             }
-            bulk = BulkState.Finished(downloaded = done - failed, failed = failed)
+            bulk = BulkState.Finished(downloaded = done - failures.values.sum(), failures = failures)
         }
     }
 
@@ -187,4 +215,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         savedIds = db.puzzleDao().allIds().toSet(),
         disabledSources = disabledSources,
     )
+
+    private companion object {
+        /** Pause between bulk downloads, to be gentle on rate-limited hosts. */
+        const val THROTTLE_MS = 150L
+    }
 }

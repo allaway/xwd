@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import app.xwd.data.FailureReason
 import app.xwd.sources.PuzzleSources
 import app.xwd.ui.BulkState
 import app.xwd.ui.SettingsViewModel
@@ -318,11 +319,38 @@ private fun BulkDownloadRow(viewModel: SettingsViewModel) {
             is BulkState.Finished -> {
                 Text(
                     "Downloaded ${state.downloaded} puzzles" +
-                        if (state.failed > 0) " (${state.failed} couldn't be fetched)." else ".",
+                        if (state.failed > 0) " — ${state.failed} couldn't be fetched:" else ".",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                if (state.failures.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    state.failures.entries
+                        .sortedByDescending { it.value }
+                        .forEach { (reason, count) ->
+                            Text(
+                                "· $count ${reason.label}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                }
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = { viewModel.dismissBulk() }) { Text("Done") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.retryable > 0) {
+                        Button(onClick = { viewModel.downloadPending() }) { Text("Try again") }
+                    }
+                    TextButton(onClick = { viewModel.dismissBulk() }) { Text("Done") }
+                }
+                if (state.retryable > 0) {
+                    Text(
+                        "About ${state.retryable} of these (rate-limits and timeouts) are usually " +
+                            "temporary — tap Try again to fetch the rest. Files already downloaded " +
+                            "are skipped, so it only retries what's missing.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
             }
         }
     }
