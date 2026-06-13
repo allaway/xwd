@@ -37,10 +37,10 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
 - **Library** — a browsable catalog of every source's feed: available puzzles
   are *listed* (lazy-loaded as you scroll, all the way back through the
   Jonesin' archive) without downloading anything, and each card downloads on
-  tap. Sources can be toggled on and off, the latest from every source still
-  comes down with one tap, and any past Jonesin' date can be picked from the
-  calendar. Downloaded cards show fill progress, solve time, completion, and
-  a grid-size badge (Mini / Midi / Maxi / Supermaxi / Ultramaxi).
+  tap. A single filter sheet narrows the feed by status (all / downloaded),
+  source, and grid size (Mini / Midi / Maxi / Supermaxi / Ultramaxi); any past
+  Jonesin' date can be picked from the calendar. Downloaded cards show fill
+  progress, solve time, completion, and a grid-size badge.
 - **Solving** — tap to select, tap again to flip Across/Down, built-in
   keyboard, clue bar with prev/next navigation, full clue list sheet, circled
   squares (GEXT) support. Grids too large to fit the screen at a readable
