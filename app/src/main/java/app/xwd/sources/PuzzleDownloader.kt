@@ -14,9 +14,12 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
 class PuzzleDownloader(
+    // Puzzle files are tiny, so keep timeouts short: a dead or stalled host
+    // should fail fast and let the bulk download move on, not hang for 30s.
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(25, TimeUnit.SECONDS)
         .build(),
 ) {
 

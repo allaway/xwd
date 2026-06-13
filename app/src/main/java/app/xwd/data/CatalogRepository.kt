@@ -41,38 +41,56 @@ class CatalogRepository(
         }
 
     /**
-     * Walk a source's archive from newest to oldest, recording every puzzle
-     * in the catalog. Returns the total number of catalog rows added.
-     * [onProgress] reports the running total after each page so a scan can
-     * show live progress. Bounded by [maxPages] as a safety stop.
+     * Walk a source's archive from newest to oldest, recording puzzles in the
+     * catalog, and stop as soon as a page contains nothing new — i.e. once we
+     * reach the part of the archive already catalogued. Returns the number of
+     * rows actually added. [onProgress] reports the running total. This makes
+     * the first scan walk the whole archive but later re-scans only touch the
+     * front, instead of re-fetching (and re-listing) everything every time.
      */
     suspend fun listEntireArchive(
         source: PuzzleSource,
         maxPages: Int = 400,
         onProgress: (added: Int) -> Unit = {},
     ): Int {
-        var added = refreshNewest(source).size
-        onProgress(added)
+        var added = 0
         when (val fetch = source.fetch) {
             is Fetch.Dated -> {
+                // Dated listing is computed offline, so this loop is cheap.
+                var newestInclusive = LocalDate.now().plusDays(2)
                 var page = 0
                 while (page < maxPages) {
-                    val n = loadOlderDated(source)
-                    added += n
+                    val entries = downloader.listDated(source, newestInclusive, PAGE_SIZE)
+                    if (entries.isEmpty()) break // archive floor
+                    val fresh = recordDated(entries)
+                    added += fresh.size
                     onProgress(added)
-                    if (n == 0) break
+                    if (fresh.isEmpty()) break // reached already-catalogued dates
+                    newestInclusive = entries.last().date!!.minusDays(1)
                     page++
                 }
             }
             is Fetch.LatestFromPage -> {
-                if (fetch.archivePageUrl == null) return added // front page only
-                var page = 2
-                while (page < maxPages + 2) {
-                    val n = loadOlderScraped(source, page)
-                    added += n
-                    onProgress(added)
-                    if (n == 0) break
-                    page++
+                val hadCatalog = dao.oldestSortDate(source.id) != null
+                val frontFresh = recordScraped(
+                    source, downloader.listScraped(source, page = 1), LocalDate.now(),
+                ).size
+                added += frontFresh
+                onProgress(added)
+                // Only page deeper on the first scan, or when the front page
+                // turned up something new (older pages are otherwise known).
+                if (fetch.archivePageUrl != null && (!hadCatalog || frontFresh > 0)) {
+                    var page = 2
+                    while (page < maxPages + 2) {
+                        val entries = downloader.listScraped(source, page)
+                        if (entries.isEmpty()) break // no more pages
+                        val oldest = dao.oldestSortDate(source.id)?.let(LocalDate::parse) ?: LocalDate.now()
+                        val fresh = recordScraped(source, entries, oldest.minusDays(SCRAPED_DAY_STEP))
+                        added += fresh.size
+                        onProgress(added)
+                        if (fresh.isEmpty()) break // reached already-catalogued puzzles
+                        page++
+                    }
                 }
             }
         }
