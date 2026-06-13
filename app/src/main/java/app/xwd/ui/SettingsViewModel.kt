@@ -60,12 +60,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private var bulkJob: Job? = null
 
-    fun setAutocheckDefault(value: Boolean) {
+    fun updateAutocheckDefault(value: Boolean) {
         autocheckDefault = value
         Settings.setAutocheckDefault(getApplication(), value)
     }
 
-    fun setAutoDownloadProspective(value: Boolean) {
+    fun updateAutoDownloadProspective(value: Boolean) {
         autoDownloadProspective = value
         Settings.setAutoDownloadProspective(getApplication(), value)
     }

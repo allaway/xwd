@@ -183,7 +183,7 @@ private fun SolvingSection(viewModel: SettingsViewModel) {
         ) {
             Switch(
                 checked = viewModel.autocheckDefault,
-                onCheckedChange = viewModel::setAutocheckDefault,
+                onCheckedChange = viewModel::updateAutocheckDefault,
             )
         }
     }
@@ -242,7 +242,7 @@ private fun DownloadsSection(viewModel: SettingsViewModel) {
         ) {
             Switch(
                 checked = viewModel.autoDownloadProspective,
-                onCheckedChange = viewModel::setAutoDownloadProspective,
+                onCheckedChange = viewModel::updateAutoDownloadProspective,
             )
         }
         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
