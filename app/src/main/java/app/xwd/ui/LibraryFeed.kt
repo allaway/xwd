@@ -3,6 +3,7 @@ package app.xwd.ui
 import app.xwd.data.CatalogEntity
 import app.xwd.data.CatalogRepository.Companion.toCatalogEntry
 import app.xwd.data.PuzzleEntity
+import app.xwd.model.SizeClass
 import app.xwd.sources.PuzzleDownloader.CatalogEntry
 import java.time.LocalDate
 
@@ -10,25 +11,40 @@ import java.time.LocalDate
 sealed interface LibraryItem {
     val id: String
     val sortDate: LocalDate
+    val sourceId: String
+
+    /** Grid size class, known only once a puzzle is on the device. */
+    val sizeClass: SizeClass?
 
     data class Saved(val entity: PuzzleEntity, override val sortDate: LocalDate) : LibraryItem {
         override val id: String get() = entity.id
+        override val sourceId: String get() = entity.sourceId
+        override val sizeClass: SizeClass get() = SizeClass.forCellCount(entity.progress.length)
     }
 
     data class Remote(val entry: CatalogEntry, override val sortDate: LocalDate) : LibraryItem {
         override val id: String get() = "${entry.sourceId}-${entry.uniqueKey}"
+        override val sourceId: String get() = entry.sourceId
+        override val sizeClass: SizeClass? get() = null // unknown until downloaded
     }
 }
 
 /**
- * What the library feed is currently narrowed to. All three are positive
- * selections: everything, only on-device puzzles, or only one source.
- * (Disabling a source entirely is separate; see disabledSources.)
+ * The library's view filters. All independent; an empty [LibraryFilters] shows
+ * everything. [size] is known only for downloaded puzzles, so selecting a size
+ * narrows to those (catalog entries of unknown size are hidden).
  */
-sealed interface LibraryFilter {
-    data object All : LibraryFilter
-    data object Downloaded : LibraryFilter
-    data class Source(val id: String) : LibraryFilter
+data class LibraryFilters(
+    val downloadedOnly: Boolean = false,
+    val sourceId: String? = null,
+    val size: SizeClass? = null,
+) {
+    val activeCount: Int
+        get() = (if (downloadedOnly) 1 else 0) +
+            (if (sourceId != null) 1 else 0) +
+            (if (size != null) 1 else 0)
+
+    val isActive: Boolean get() = activeCount > 0
 }
 
 /**
@@ -44,7 +60,7 @@ object LibraryFeed {
         saved: List<PuzzleEntity>,
         catalog: List<CatalogEntity>,
         disabledSources: Set<String>,
-        filter: LibraryFilter,
+        filters: LibraryFilters,
     ): List<LibraryItem> {
         val savedById = saved.associateBy { it.id }
         val catalogIds = catalog.mapTo(HashSet()) { it.id }
@@ -68,19 +84,13 @@ object LibraryFeed {
             items += LibraryItem.Saved(entity, parseDate(entity.date))
         }
 
-        val visible = when (filter) {
-            LibraryFilter.All -> items
-            LibraryFilter.Downloaded -> items.filterIsInstance<LibraryItem.Saved>()
-            is LibraryFilter.Source -> items.filter { it.sourceId == filter.id }
+        val visible = items.filter { item ->
+            (!filters.downloadedOnly || item is LibraryItem.Saved) &&
+                (filters.sourceId == null || item.sourceId == filters.sourceId) &&
+                (filters.size == null || item.sizeClass == filters.size)
         }
         return visible.sortedWith(compareByDescending<LibraryItem> { it.sortDate }.thenBy { it.id })
     }
-
-    private val LibraryItem.sourceId: String
-        get() = when (this) {
-            is LibraryItem.Saved -> entity.sourceId
-            is LibraryItem.Remote -> entry.sourceId
-        }
 
     private fun parseDate(iso: String): LocalDate =
         try {

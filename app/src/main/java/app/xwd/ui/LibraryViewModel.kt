@@ -13,6 +13,7 @@ import app.xwd.data.PuzzleRepository
 import app.xwd.data.Settings
 import app.xwd.data.SourceRegistry
 import app.xwd.data.XwdDatabase
+import app.xwd.model.SizeClass
 import app.xwd.sources.Fetch
 import app.xwd.sources.PuzzleDownloader.CatalogEntry
 import app.xwd.sources.PuzzleSource
@@ -56,8 +57,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val enabledSources: List<PuzzleSource>
         get() = sources.filter { it.id !in disabledSources }
 
-    /** The current positive view filter: everything, downloaded, or one source. */
-    var filter: LibraryFilter by mutableStateOf(LibraryFilter.All)
+    /** The current view filters: status, source, and size. */
+    var filters: LibraryFilters by mutableStateOf(LibraryFilters())
         private set
 
     var loadingMore: Boolean by mutableStateOf(false)
@@ -90,49 +91,34 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         sources = SourceRegistry.resolved(app)
         disabledSources = Settings.getDisabledSources(app)
         // A source narrowed-to but now disabled shouldn't keep the view empty.
-        val current = filter
-        if (current is LibraryFilter.Source && current.id in disabledSources) {
-            filter = LibraryFilter.All
+        if (filters.sourceId != null && filters.sourceId in disabledSources) {
+            filters = filters.copy(sourceId = null)
         }
         refreshNewest()
     }
 
     /** The feed: the catalog joined against saved puzzles, in stable order. */
     fun feed(saved: List<PuzzleEntity>, catalog: List<CatalogEntity>): List<LibraryItem> =
-        LibraryFeed.build(saved, catalog, disabledSources, filter)
+        LibraryFeed.build(saved, catalog, disabledSources, filters)
 
-    fun filterBy(value: LibraryFilter) {
-        filter = value
+    fun setDownloadedOnly(value: Boolean) {
+        filters = filters.copy(downloadedOnly = value)
     }
 
-    /**
-     * Tap on a source name: narrow the feed to just that source. A disabled
-     * source is re-enabled first so the selection actually shows something.
-     */
-    fun selectSource(id: String) {
-        if (id in disabledSources) toggleSource(id)
-        filter = LibraryFilter.Source(id)
+    fun setSourceFilter(id: String?) {
+        filters = filters.copy(sourceId = id)
     }
 
-    /** Long-press on a source name: turn the source on/off entirely. */
-    fun toggleSource(id: String) {
-        disabledSources = if (id in disabledSources) disabledSources - id else disabledSources + id
-        Settings.setDisabledSources(getApplication(), disabledSources)
-        if (id in disabledSources) {
-            // Don't leave the view narrowed to a source that's now off.
-            if (filter == LibraryFilter.Source(id)) filter = LibraryFilter.All
-        } else {
-            exhausted.remove(id)
-            val source = sources.firstOrNull { it.id == id } ?: return
-            viewModelScope.launch {
-                try {
-                    catalogRepo.refreshNewest(source)
-                } catch (e: Exception) {
-                    message = "${source.name}: ${e.message ?: "couldn't list puzzles"}"
-                }
-            }
-        }
+    fun setSizeFilter(size: SizeClass?) {
+        filters = filters.copy(size = size)
     }
+
+    fun clearFilters() {
+        filters = LibraryFilters()
+    }
+
+    /** Display name of the filtered source, for the filter summary line. */
+    fun sourceNameOf(id: String): String = sources.firstOrNull { it.id == id }?.name ?: id
 
     /**
      * Check every enabled source for newly published puzzles and record them
@@ -157,7 +143,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     /** Extend the catalog one page deeper into every enabled source's archive. */
     fun loadMore() {
-        if (loadingMore || filter == LibraryFilter.Downloaded) return
+        // Nothing to fetch when the view is limited to on-device puzzles
+        // (downloaded-only, or a specific size, which only saved puzzles have).
+        if (loadingMore || filters.downloadedOnly || filters.size != null) return
         loadingMore = true
         viewModelScope.launch {
             for (source in sources) {

@@ -5,11 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,14 +26,15 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -61,7 +63,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -69,7 +70,6 @@ import app.xwd.data.PuzzleEntity
 import app.xwd.data.formatSeconds
 import app.xwd.model.SizeClass
 import app.xwd.sources.PuzzleDownloader.CatalogEntry
-import app.xwd.ui.LibraryFilter
 import app.xwd.ui.LibraryItem
 import app.xwd.ui.LibraryViewModel
 import app.xwd.ui.theme.DottedRule
@@ -97,6 +97,7 @@ fun LibraryScreen(
     val catalog by viewModel.catalog.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showArchiveDialog by remember { mutableStateOf(false) }
+    var showFilterSheet by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PuzzleEntity?>(null) }
 
     val feed = viewModel.feed(puzzles, catalog)
@@ -135,6 +136,7 @@ fun LibraryScreen(
         onArchive = { showArchiveDialog = true },
         onStats = onOpenStats,
         onSettings = onOpenSettings,
+        onFilters = { showFilterSheet = true },
         onDelete = { pendingDelete = it },
     )
 
@@ -153,6 +155,10 @@ fun LibraryScreen(
 
     if (showArchiveDialog) {
         ArchiveDownloadDialog(viewModel = viewModel, onDismiss = { showArchiveDialog = false })
+    }
+
+    if (showFilterSheet) {
+        LibraryFilterSheet(viewModel = viewModel, onDismiss = { showFilterSheet = false })
     }
 
     pendingDelete?.let { puzzle ->
@@ -178,11 +184,57 @@ private class LibraryActions(
     val onArchive: () -> Unit,
     val onStats: () -> Unit,
     val onSettings: () -> Unit,
+    val onFilters: () -> Unit,
     val onDelete: (PuzzleEntity) -> Unit,
 )
 
 private fun LibraryViewModel.sourceName(id: String): String =
     sources.firstOrNull { it.id == id }?.name ?: id
+
+/** One-line description of the active filters for the filter bar. */
+private fun filterSummary(viewModel: LibraryViewModel): String {
+    val f = viewModel.filters
+    val parts = buildList {
+        if (f.downloadedOnly) add("downloaded")
+        f.size?.let { add(it.label.lowercase(Locale.US)) }
+        f.sourceId?.let { add(viewModel.sourceName(it).lowercase(Locale.US)) }
+    }
+    return if (parts.isEmpty()) "showing everything" else "showing " + parts.joinToString(" · ")
+}
+
+/** Compact, skin-tinted filter bar: opens the filter sheet, shows the summary. */
+@Composable
+private fun FilterBar(
+    label: String,
+    summary: String,
+    active: Boolean,
+    accent: Color,
+    muted: Color,
+    modifier: Modifier = Modifier,
+    onOpen: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().clickableNoRipple(onOpen),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = accent, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            summary,
+            color = muted,
+            fontSize = 12.5.sp,
+            fontStyle = FontStyle.Italic,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (active) {
+            Spacer(Modifier.width(8.dp))
+            Text("clear", color = accent, fontSize = 12.5.sp, modifier = Modifier.clickableNoRipple(onClear))
+        }
+    }
+}
 
 private fun PuzzleEntity.isClean(): Boolean =
     !autocheckUsed && revealCount == 0 && checkCount == 0
@@ -237,31 +289,16 @@ private fun MarginsLibrary(
                 MarginsAction("settings", actions.onSettings)
             }
         }
-        // Tabs: All / Downloaded / sources; struck through when off.
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp)
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            MarginsTab("All", on = viewModel.filter == LibraryFilter.All) {
-                viewModel.filterBy(LibraryFilter.All)
-            }
-            MarginsTab("Downloaded", on = viewModel.filter == LibraryFilter.Downloaded) {
-                viewModel.filterBy(LibraryFilter.Downloaded)
-            }
-            viewModel.enabledSources.forEach { source ->
-                MarginsTab(
-                    source.name,
-                    on = viewModel.filter == LibraryFilter.Source(source.id),
-                    onLongClick = { viewModel.toggleSource(source.id) },
-                    onClick = { viewModel.selectSource(source.id) },
-                )
-            }
-        }
+        FilterBar(
+            label = "filter",
+            summary = filterSummary(viewModel),
+            active = viewModel.filters.isActive,
+            accent = MarginsT.ochreDeep,
+            muted = MarginsT.muted,
+            modifier = Modifier.padding(top = 10.dp, start = 24.dp, end = 24.dp, bottom = 8.dp),
+            onOpen = actions.onFilters,
+            onClear = viewModel::clearFilters,
+        )
         Box(Modifier.fillMaxWidth().height(1.dp).background(MarginsT.divider))
 
         LazyColumn(
@@ -306,38 +343,6 @@ private fun MarginsAction(label: String, onClick: () -> Unit) {
     ) {
         Text(label, fontSize = 13.sp, fontStyle = FontStyle.Italic, color = MarginsT.muted, maxLines = 1)
         DottedRule(MarginsT.faint, Modifier.fillMaxWidth().padding(top = 1.dp))
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun MarginsTab(
-    label: String,
-    on: Boolean,
-    off: Boolean = false,
-    onLongClick: (() -> Unit)? = null,
-    onClick: () -> Unit,
-) {
-    Column(Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
-        Text(
-            label,
-            fontSize = 13.sp,
-            color = when {
-                on -> MarginsT.ink
-                off -> MarginsT.faint
-                else -> MarginsT.muted
-            },
-            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-            textDecoration = if (off) TextDecoration.LineThrough else null,
-            maxLines = 1,
-        )
-        Box(
-            Modifier
-                .padding(top = 3.dp, bottom = 3.dp)
-                .width(26.dp)
-                .height(2.dp)
-                .background(if (on) MarginsT.ochre else Color.Transparent),
-        )
     }
 }
 
@@ -512,39 +517,16 @@ private fun TermLibrary(
             TermBtn("[Σstats]", actions.onStats)
             TermBtn("[⚙set]", actions.onSettings)
         }
-        // view: ▸all · downloaded
-        Row(Modifier.padding(horizontal = 14.dp)) {
-            Text("view: ", color = TermT.muted, fontSize = 11.5.sp)
-            TermViewToggle("all", on = viewModel.filter == LibraryFilter.All) {
-                viewModel.filterBy(LibraryFilter.All)
-            }
-            Text(" · ", color = TermT.muted, fontSize = 11.5.sp)
-            TermViewToggle("downloaded", on = viewModel.filter == LibraryFilter.Downloaded) {
-                viewModel.filterBy(LibraryFilter.Downloaded)
-            }
-        }
-        // Source filters: tap to view just one ([▸]); hold to switch a
-        // source off ([ ]) or back on ([x]).
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            viewModel.enabledSources.forEach { source ->
-                val selected = viewModel.filter == LibraryFilter.Source(source.id)
-                Text(
-                    (if (selected) "[▸] " else "[x] ") + source.id,
-                    fontSize = 11.5.sp,
-                    color = if (selected) TermT.green else TermT.muted,
-                    modifier = Modifier.combinedClickable(
-                        onClick = { viewModel.selectSource(source.id) },
-                        onLongClick = { viewModel.toggleSource(source.id) },
-                    ),
-                )
-            }
-        }
+        FilterBar(
+            label = "[filter]",
+            summary = filterSummary(viewModel),
+            active = viewModel.filters.isActive,
+            accent = TermT.amber,
+            muted = TermT.muted,
+            modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 10.dp),
+            onOpen = actions.onFilters,
+            onClear = viewModel::clearFilters,
+        )
         // The bordered list panel.
         LazyColumn(
             state = listState,
@@ -600,16 +582,6 @@ private fun TermBtn(label: String, onClick: () -> Unit) {
         color = TermT.amber,
         fontSize = 12.sp,
         modifier = Modifier.clickableNoRipple(onClick).padding(vertical = 4.dp),
-    )
-}
-
-@Composable
-private fun TermViewToggle(label: String, on: Boolean, onClick: () -> Unit) {
-    Text(
-        if (on) "▸$label" else label,
-        color = if (on) TermT.green else TermT.muted,
-        fontSize = 11.5.sp,
-        modifier = Modifier.clickableNoRipple(onClick),
     )
 }
 
@@ -746,29 +718,16 @@ private fun RisoLibrary(
                 RisoStamp("settings", -4f, actions.onSettings)
             }
         }
-        // Chips: all / downloaded / sources.
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(start = 22.dp, end = 22.dp, top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            RisoChip("all", on = viewModel.filter == LibraryFilter.All, off = false) {
-                viewModel.filterBy(LibraryFilter.All)
-            }
-            RisoChip("downloaded", on = viewModel.filter == LibraryFilter.Downloaded, off = false) {
-                viewModel.filterBy(LibraryFilter.Downloaded)
-            }
-            viewModel.enabledSources.forEach { source ->
-                RisoChip(
-                    source.name.lowercase(Locale.US),
-                    on = viewModel.filter == LibraryFilter.Source(source.id),
-                    off = false,
-                    onLongClick = { viewModel.toggleSource(source.id) },
-                ) { viewModel.selectSource(source.id) }
-            }
-        }
+        FilterBar(
+            label = "filter",
+            summary = filterSummary(viewModel),
+            active = viewModel.filters.isActive,
+            accent = RisoT.pinkDeep,
+            muted = RisoT.blueMuted,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 12.dp),
+            onOpen = actions.onFilters,
+            onClear = viewModel::clearFilters,
+        )
 
         LazyColumn(
             state = listState,
@@ -816,39 +775,6 @@ private fun RisoStamp(label: String, rotation: Float, onClick: () -> Unit) {
             letterSpacing = 0.8.sp,
             color = RisoT.pinkDeep,
             textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun RisoChip(
-    label: String,
-    on: Boolean,
-    off: Boolean,
-    onLongClick: (() -> Unit)? = null,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(99.dp)
-    Box(
-        Modifier
-            .let { if (on) it.offsetShadow(RisoT.blue, shape, dx = 2.5.dp, dy = 2.5.dp) else it }
-            .background(if (on) RisoT.pink else Color.Transparent, shape)
-            .border(2.dp, if (on) RisoT.pink else RisoT.blue, shape)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 13.dp, vertical = 5.dp),
-    ) {
-        Text(
-            label,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.Bold,
-            color = when {
-                on -> RisoT.paper
-                off -> RisoT.blue.copy(alpha = 0.4f)
-                else -> RisoT.blue
-            },
-            textDecoration = if (off) TextDecoration.LineThrough else null,
-            maxLines = 1,
         )
     }
 }
@@ -1025,12 +951,14 @@ private fun LazyListScope.emptyAndEndNotes(
         item {
             Text(
                 when {
-                    viewModel.filter == LibraryFilter.Downloaded ->
-                        "Nothing downloaded yet. Switch the view back to all, then tap a puzzle to download it."
-                    viewModel.filter is LibraryFilter.Source ->
+                    viewModel.filters.size != null ->
+                        "No downloaded puzzles of this size. Size filters only match puzzles already on your device."
+                    viewModel.filters.downloadedOnly ->
+                        "Nothing downloaded yet. Clear the filter, then tap a puzzle to download it."
+                    viewModel.filters.sourceId != null ->
                         "Nothing from this source yet — its puzzles will appear here as they’re found."
                     viewModel.disabledSources.size == viewModel.sources.size ->
-                        "All sources are turned off. Tap one above to turn it back on."
+                        "All sources are turned off. Turn one back on in Settings."
                     else ->
                         "Puzzles from your enabled sources will appear here as they’re found."
                 },
@@ -1092,4 +1020,85 @@ private fun ArchiveDownloadDialog(viewModel: LibraryViewModel, onDismiss: () -> 
         }
         DatePicker(state = dateState, showModeToggle = false)
     }
+}
+
+/**
+ * One filter surface for all three skins: status, size, and source in a
+ * single themed sheet, replacing the long horizontal chip row.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LibraryFilterSheet(viewModel: LibraryViewModel, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        val filters = viewModel.filters
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                "Filter",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+
+            FilterGroup("Show") {
+                ChoiceChip("All", selected = !filters.downloadedOnly) { viewModel.setDownloadedOnly(false) }
+                ChoiceChip("Downloaded", selected = filters.downloadedOnly) { viewModel.setDownloadedOnly(true) }
+            }
+
+            FilterGroup("Size") {
+                ChoiceChip("Any size", selected = filters.size == null) { viewModel.setSizeFilter(null) }
+                SizeClass.entries.forEach { sc ->
+                    ChoiceChip(sc.label, selected = filters.size == sc) { viewModel.setSizeFilter(sc) }
+                }
+            }
+            Text(
+                "Size matches puzzles already on your device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+
+            FilterGroup("Source") {
+                ChoiceChip("All sources", selected = filters.sourceId == null) { viewModel.setSourceFilter(null) }
+                viewModel.enabledSources.forEach { source ->
+                    ChoiceChip(source.name, selected = filters.sourceId == source.id) {
+                        viewModel.setSourceFilter(source.id)
+                    }
+                }
+            }
+
+            Row(
+                Modifier.fillMaxWidth().padding(top = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = { viewModel.clearFilters() }) { Text("Clear all") }
+                Spacer(Modifier.weight(1f))
+                Button(onClick = onDismiss) { Text("Done") }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FilterGroup(title: String, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Text(
+            title.uppercase(Locale.US),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) { content() }
+    }
+}
+
+@Composable
+private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
 }
