@@ -25,9 +25,9 @@ class CatalogRepository(
      * List the newest puzzles of [source] (recent dates, or page 1 of a
      * scraped feed) and record any not yet in the catalog. This is the
      * "did anything new come out?" check run at launch and from the
-     * background refresher.
+     * background refresher. Returns the entries that were newly added.
      */
-    suspend fun refreshNewest(source: PuzzleSource) {
+    suspend fun refreshNewest(source: PuzzleSource): List<CatalogEntry> =
         when (source.fetch) {
             is Fetch.Dated -> recordDated(
                 downloader.listDated(source, LocalDate.now().plusDays(2), PAGE_SIZE),
@@ -39,6 +39,44 @@ class CatalogRepository(
                 recordScraped(source, entries, newestFirstFrom = LocalDate.now())
             }
         }
+
+    /**
+     * Walk a source's archive from newest to oldest, recording every puzzle
+     * in the catalog. Returns the total number of catalog rows added.
+     * [onProgress] reports the running total after each page so a scan can
+     * show live progress. Bounded by [maxPages] as a safety stop.
+     */
+    suspend fun listEntireArchive(
+        source: PuzzleSource,
+        maxPages: Int = 400,
+        onProgress: (added: Int) -> Unit = {},
+    ): Int {
+        var added = refreshNewest(source).size
+        onProgress(added)
+        when (val fetch = source.fetch) {
+            is Fetch.Dated -> {
+                var page = 0
+                while (page < maxPages) {
+                    val n = loadOlderDated(source)
+                    added += n
+                    onProgress(added)
+                    if (n == 0) break
+                    page++
+                }
+            }
+            is Fetch.LatestFromPage -> {
+                if (fetch.archivePageUrl == null) return added // front page only
+                var page = 2
+                while (page < maxPages + 2) {
+                    val n = loadOlderScraped(source, page)
+                    added += n
+                    onProgress(added)
+                    if (n == 0) break
+                    page++
+                }
+            }
+        }
+        return added
     }
 
     /**
@@ -66,23 +104,26 @@ class CatalogRepository(
         return entries.size
     }
 
-    private suspend fun recordDated(entries: List<CatalogEntry>) {
-        if (entries.isEmpty()) return
-        dao.insertAll(entries.map { it.toEntity(sortDate = it.date!!) })
+    private suspend fun recordDated(entries: List<CatalogEntry>): List<CatalogEntry> {
+        if (entries.isEmpty()) return emptyList()
+        val known = dao.knownIds(entries.map { it.catalogId }).toSet()
+        val fresh = entries.filter { it.catalogId !in known }
+        dao.insertAll(fresh.map { it.toEntity(sortDate = it.date!!) })
+        return fresh
     }
 
     /**
      * Scraped feeds carry no publish dates, so new entries get approximate,
      * write-once sort dates: [SCRAPED_DAY_STEP]-day steps below
      * [newestFirstFrom], in page order, counting only entries not already
-     * in the catalog.
+     * in the catalog. Returns the entries that were newly added.
      */
     private suspend fun recordScraped(
         source: PuzzleSource,
         entries: List<CatalogEntry>,
         newestFirstFrom: LocalDate,
-    ) {
-        if (entries.isEmpty()) return
+    ): List<CatalogEntry> {
+        if (entries.isEmpty()) return emptyList()
         val known = dao.knownIds(entries.map { it.catalogId }).toSet()
         val fresh = entries.filter { it.catalogId !in known }
         dao.insertAll(
@@ -90,6 +131,7 @@ class CatalogRepository(
                 entry.toEntity(sortDate = newestFirstFrom.minusDays(SCRAPED_DAY_STEP * i))
             },
         )
+        return fresh
     }
 
     companion object {

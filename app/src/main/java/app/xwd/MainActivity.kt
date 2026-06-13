@@ -21,9 +21,11 @@ import androidx.navigation.navArgument
 import app.xwd.data.CatalogRefreshWorker
 import app.xwd.data.Settings
 import app.xwd.ui.LibraryViewModel
+import app.xwd.ui.SettingsViewModel
 import app.xwd.ui.SolveViewModel
 import app.xwd.ui.StatsViewModel
 import app.xwd.ui.screens.LibraryScreen
+import app.xwd.ui.screens.SettingsScreen
 import app.xwd.ui.screens.SolveScreen
 import app.xwd.ui.screens.StatsScreen
 import app.xwd.ui.theme.Skin
@@ -49,6 +51,7 @@ class MainActivity : ComponentActivity() {
             }
             XwdTheme(skin) {
                 XwdApp(
+                    skin = skin,
                     onSkinChange = {
                         skin = it
                         Settings.setSkinName(this, it.name)
@@ -60,7 +63,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun XwdApp(onSkinChange: (Skin) -> Unit) {
+fun XwdApp(skin: Skin, onSkinChange: (Skin) -> Unit) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "library") {
         composable("library") {
@@ -69,7 +72,16 @@ fun XwdApp(onSkinChange: (Skin) -> Unit) {
                 viewModel = vm,
                 onOpenPuzzle = { id -> navController.navigate("solve/$id") },
                 onOpenStats = { navController.navigate("stats") },
+                onOpenSettings = { navController.navigate("settings") },
+            )
+        }
+        composable("settings") {
+            val vm: SettingsViewModel = viewModel()
+            SettingsScreen(
+                viewModel = vm,
+                currentSkin = skin,
                 onSkinChange = onSkinChange,
+                onBack = { navController.popBackStack() },
             )
         }
         composable(

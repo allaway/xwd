@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,6 +48,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -87,17 +91,26 @@ fun LibraryScreen(
     viewModel: LibraryViewModel,
     onOpenPuzzle: (String) -> Unit,
     onOpenStats: () -> Unit,
-    onSkinChange: (Skin) -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val puzzles by viewModel.puzzles.collectAsState()
     val catalog by viewModel.catalog.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showArchiveDialog by remember { mutableStateOf(false) }
-    var showSkinDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PuzzleEntity?>(null) }
 
     val feed = viewModel.feed(puzzles, catalog)
     val listState = rememberLazyListState()
+
+    // Re-read feeds/toggles changed in Settings whenever the library resumes.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.reloadConfig()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(viewModel.message) {
         viewModel.message?.let {
@@ -121,7 +134,7 @@ fun LibraryScreen(
         onOpenPuzzle = onOpenPuzzle,
         onArchive = { showArchiveDialog = true },
         onStats = onOpenStats,
-        onSkins = { showSkinDialog = true },
+        onSettings = onOpenSettings,
         onDelete = { pendingDelete = it },
     )
 
@@ -140,14 +153,6 @@ fun LibraryScreen(
 
     if (showArchiveDialog) {
         ArchiveDownloadDialog(viewModel = viewModel, onDismiss = { showArchiveDialog = false })
-    }
-
-    if (showSkinDialog) {
-        SkinPickerDialog(
-            current = LocalSkin.current,
-            onPick = { onSkinChange(it); showSkinDialog = false },
-            onDismiss = { showSkinDialog = false },
-        )
     }
 
     pendingDelete?.let { puzzle ->
@@ -172,7 +177,7 @@ private class LibraryActions(
     val onOpenPuzzle: (String) -> Unit,
     val onArchive: () -> Unit,
     val onStats: () -> Unit,
-    val onSkins: () -> Unit,
+    val onSettings: () -> Unit,
     val onDelete: (PuzzleEntity) -> Unit,
 )
 
@@ -229,7 +234,7 @@ private fun MarginsLibrary(
             ) {
                 MarginsAction("archive", actions.onArchive)
                 MarginsAction("notebook", actions.onStats)
-                MarginsAction("skins", actions.onSkins)
+                MarginsAction("settings", actions.onSettings)
             }
         }
         // Tabs: All / Downloaded / sources; struck through when off.
@@ -248,11 +253,10 @@ private fun MarginsLibrary(
             MarginsTab("Downloaded", on = viewModel.filter == LibraryFilter.Downloaded) {
                 viewModel.filterBy(LibraryFilter.Downloaded)
             }
-            viewModel.sources.forEach { source ->
+            viewModel.enabledSources.forEach { source ->
                 MarginsTab(
                     source.name,
                     on = viewModel.filter == LibraryFilter.Source(source.id),
-                    off = source.id in viewModel.disabledSources,
                     onLongClick = { viewModel.toggleSource(source.id) },
                     onClick = { viewModel.selectSource(source.id) },
                 )
@@ -506,7 +510,7 @@ private fun TermLibrary(
             Box(Modifier.weight(1f).height(1.dp).background(TermT.border))
             TermBtn("[☷date]", actions.onArchive)
             TermBtn("[Σstats]", actions.onStats)
-            TermBtn("[◐skin]", actions.onSkins)
+            TermBtn("[⚙set]", actions.onSettings)
         }
         // view: ▸all · downloaded
         Row(Modifier.padding(horizontal = 14.dp)) {
@@ -528,18 +532,12 @@ private fun TermLibrary(
                 .padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            viewModel.sources.forEach { source ->
-                val off = source.id in viewModel.disabledSources
+            viewModel.enabledSources.forEach { source ->
                 val selected = viewModel.filter == LibraryFilter.Source(source.id)
                 Text(
-                    (if (off) "[ ] " else if (selected) "[▸] " else "[x] ") + source.id,
+                    (if (selected) "[▸] " else "[x] ") + source.id,
                     fontSize = 11.5.sp,
-                    color = when {
-                        selected -> TermT.green
-                        off -> TermT.offText
-                        else -> TermT.muted
-                    },
-                    textDecoration = if (off) TextDecoration.LineThrough else null,
+                    color = if (selected) TermT.green else TermT.muted,
                     modifier = Modifier.combinedClickable(
                         onClick = { viewModel.selectSource(source.id) },
                         onLongClick = { viewModel.toggleSource(source.id) },
@@ -745,7 +743,7 @@ private fun RisoLibrary(
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 RisoStamp("archive", -6f, actions.onArchive)
                 RisoStamp("stats", 3f, actions.onStats)
-                RisoStamp("skins", -4f, actions.onSkins)
+                RisoStamp("settings", -4f, actions.onSettings)
             }
         }
         // Chips: all / downloaded / sources.
@@ -762,11 +760,11 @@ private fun RisoLibrary(
             RisoChip("downloaded", on = viewModel.filter == LibraryFilter.Downloaded, off = false) {
                 viewModel.filterBy(LibraryFilter.Downloaded)
             }
-            viewModel.sources.forEach { source ->
+            viewModel.enabledSources.forEach { source ->
                 RisoChip(
                     source.name.lowercase(Locale.US),
                     on = viewModel.filter == LibraryFilter.Source(source.id),
-                    off = source.id in viewModel.disabledSources,
+                    off = false,
                     onLongClick = { viewModel.toggleSource(source.id) },
                 ) { viewModel.selectSource(source.id) }
             }
@@ -1054,34 +1052,6 @@ private fun LazyListScope.emptyAndEndNotes(
             )
         }
     }
-}
-
-@Composable
-private fun SkinPickerDialog(current: Skin, onPick: (Skin) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Skins") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Skin.entries.forEach { skin ->
-                    FilterChip(
-                        selected = skin == current,
-                        onClick = { onPick(skin) },
-                        label = {
-                            Column(Modifier.padding(vertical = 6.dp)) {
-                                Text(skin.label, fontWeight = FontWeight.SemiBold)
-                                Text(skin.blurb, fontSize = 11.sp, lineHeight = 14.sp)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
-        },
-    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -8,13 +8,14 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import app.xwd.sources.PuzzleSources
 import java.util.concurrent.TimeUnit
 
 /**
  * Silently refreshes the catalog of downloadable puzzles twice a day, so
- * new dailies appear in the library feed without a manual refresh. Only
- * the listings are fetched; puzzle files still download on demand.
+ * new dailies appear in the library feed without a manual refresh. Only the
+ * listings are fetched; puzzle files download on demand — unless the user
+ * turned on prospective auto-download, in which case newly listed puzzles
+ * from enabled feeds are fetched too.
  */
 class CatalogRefreshWorker(
     context: Context,
@@ -22,15 +23,27 @@ class CatalogRefreshWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val repo = CatalogRepository(XwdDatabase.get(applicationContext).catalogDao())
+        val db = XwdDatabase.get(applicationContext)
+        val catalogRepo = CatalogRepository(db.catalogDao())
+        val puzzleRepo = PuzzleRepository(db.puzzleDao())
         val disabled = Settings.getDisabledSources(applicationContext)
+        val autoDownload = Settings.getAutoDownloadProspective(applicationContext)
         var failed = 0
         var tried = 0
-        for (source in PuzzleSources.all) {
+        for (source in SourceRegistry.resolved(applicationContext)) {
             if (source.id in disabled) continue
             tried++
             try {
-                repo.refreshNewest(source)
+                val fresh = catalogRepo.refreshNewest(source)
+                if (autoDownload) {
+                    for (entry in fresh) {
+                        try {
+                            puzzleRepo.downloadEntry(source, entry)
+                        } catch (_: Exception) {
+                            // a single bad file shouldn't abort the batch
+                        }
+                    }
+                }
             } catch (_: Exception) {
                 failed++ // one broken feed must not stop the rest
             }
