@@ -48,7 +48,16 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
   square in view.
 - **Error highlighting** — an *Autocheck* mode that marks every incorrect
   entry with red text and a slash (NYT-style), plus on-demand
-  Check letter / word / puzzle and Reveal letter / word / puzzle.
+  Check letter / word / puzzle and Reveal letter / word / puzzle. Autocheck
+  can be turned on by default for new puzzles in Settings.
+- **Settings** — change the skin, set real-time checking on by default,
+  enable or disable individual feeds (disabled feeds stop updating and drop
+  out of the library filters), and add your own custom feeds by pasting the
+  URL of any page that links to `.puz` / `.ipuz` files. A *Download full
+  history* tool lists every puzzle from all enabled feeds back through their
+  archives, shows how many aren't downloaded yet, and fetches them all; an
+  *auto-download* toggle keeps newly published puzzles flowing in
+  automatically rather than just being listed.
 - **Import from photo** — take a picture or screenshot of any crossword and
   the app reconstructs it: Claude (via the Anthropic API) reads the grid and
   clues from the image, **solves the puzzle behind the scenes**, and the

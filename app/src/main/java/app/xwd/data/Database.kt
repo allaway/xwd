@@ -73,6 +73,9 @@ interface CatalogDao {
     @Query("SELECT * FROM catalog")
     fun observeAll(): Flow<List<CatalogEntity>>
 
+    @Query("SELECT * FROM catalog")
+    suspend fun all(): List<CatalogEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(rows: List<CatalogEntity>)
 
@@ -93,6 +96,9 @@ interface PuzzleDao {
 
     @Query("SELECT uniqueKey FROM puzzles WHERE sourceId = :sourceId")
     suspend fun keysForSource(sourceId: String): List<String>
+
+    @Query("SELECT id FROM puzzles")
+    suspend fun allIds(): List<String>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(entity: PuzzleEntity): Long

@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import app.xwd.data.PuzzleEntity
 import app.xwd.data.PuzzleRepository
+import app.xwd.data.Settings
 import app.xwd.data.XwdDatabase
 import app.xwd.model.Clue
 import app.xwd.model.Direction
@@ -67,7 +68,11 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
             puzzle = p
             letters = e.progress
             elapsedSeconds = e.elapsedSeconds
-            autocheck = e.autocheckUsed
+            // Resume autocheck if it was ever used here; otherwise honor the
+            // user's real-time-check default for a not-yet-finished puzzle.
+            autocheck = e.autocheckUsed ||
+                (!e.isCompleted && Settings.getAutocheckDefault(application))
+            if (autocheck) markAutocheckUsed()
             if (e.isCompleted) completionState = CompletionState.SOLVED
             selected = p.cells.indexOfFirst { !it.isBlock }.coerceAtLeast(0)
             if (!p.hasWord(selected, direction)) direction = direction.opposite()

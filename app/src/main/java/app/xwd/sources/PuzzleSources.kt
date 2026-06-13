@@ -267,4 +267,24 @@ object PuzzleSources {
     val dated: List<PuzzleSource> = all.filter { it.fetch is Fetch.Dated }
 
     fun byId(id: String): PuzzleSource? = all.firstOrNull { it.id == id }
+
+    /** Prefix that marks a [CustomFeed]-derived source id. */
+    const val CUSTOM_PREFIX = "custom-"
+
+    /** Turn a user-added feed into a scraped [PuzzleSource]. */
+    fun fromCustom(feed: CustomFeed): PuzzleSource = PuzzleSource(
+        id = feed.id,
+        name = feed.name,
+        attribution = "Custom feed added by you: ${feed.pageUrl}",
+        licenseBasis = "User-added source. You are responsible for solving only " +
+            "puzzles their rights holders make freely available for personal, " +
+            "non-commercial use.",
+        fetch = Fetch.LatestFromPage(
+            pageUrl = feed.pageUrl,
+            linkPattern = ANY_PUZ,
+            resolveUrl = resolver(feed.pageUrl),
+            // Custom pages aren't assumed to be numerically paginated; the
+            // front page's links are what we list.
+        ),
+    )
 }

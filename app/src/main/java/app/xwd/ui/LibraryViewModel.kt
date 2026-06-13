@@ -11,11 +11,11 @@ import app.xwd.data.CatalogRepository
 import app.xwd.data.PuzzleEntity
 import app.xwd.data.PuzzleRepository
 import app.xwd.data.Settings
+import app.xwd.data.SourceRegistry
 import app.xwd.data.XwdDatabase
 import app.xwd.sources.Fetch
 import app.xwd.sources.PuzzleDownloader.CatalogEntry
 import app.xwd.sources.PuzzleSource
-import app.xwd.sources.PuzzleSources
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -40,14 +40,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         private set
     var message: String? by mutableStateOf(null)
 
-    val sources: List<PuzzleSource> = PuzzleSources.all
+    /** Built-in sources plus the user's custom feeds; reloaded on resume. */
+    var sources: List<PuzzleSource> by mutableStateOf(SourceRegistry.resolved(application))
+        private set
 
-    /** Sources with a browseable per-date archive. */
-    val datedSources: List<PuzzleSource> = PuzzleSources.dated
+    /** Sources with a browseable per-date archive (offered in the date dialog). */
+    val datedSources: List<PuzzleSource>
+        get() = sources.filter { it.fetch is Fetch.Dated }
 
     /** Source ids the user has toggled off; persisted across launches. */
     var disabledSources: Set<String> by mutableStateOf(Settings.getDisabledSources(application))
         private set
+
+    /** Sources shown in the library's filter row: everything not turned off. */
+    val enabledSources: List<PuzzleSource>
+        get() = sources.filter { it.id !in disabledSources }
 
     /** The current positive view filter: everything, downloaded, or one source. */
     var filter: LibraryFilter by mutableStateOf(LibraryFilter.All)
@@ -70,6 +77,23 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private var refreshing = false
 
     init {
+        refreshNewest()
+    }
+
+    /**
+     * Re-read feed configuration (custom feeds added or sources toggled in
+     * Settings) and list anything newly enabled. Called when the library
+     * regains focus.
+     */
+    fun reloadConfig() {
+        val app = getApplication<Application>()
+        sources = SourceRegistry.resolved(app)
+        disabledSources = Settings.getDisabledSources(app)
+        // A source narrowed-to but now disabled shouldn't keep the view empty.
+        val current = filter
+        if (current is LibraryFilter.Source && current.id in disabledSources) {
+            filter = LibraryFilter.All
+        }
         refreshNewest()
     }
 
@@ -99,7 +123,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             if (filter == LibraryFilter.Source(id)) filter = LibraryFilter.All
         } else {
             exhausted.remove(id)
-            val source = PuzzleSources.byId(id) ?: return
+            val source = sources.firstOrNull { it.id == id } ?: return
             viewModelScope.launch {
                 try {
                     catalogRepo.refreshNewest(source)
@@ -170,7 +194,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun download(entry: CatalogEntry) {
         val itemId = "${entry.sourceId}-${entry.uniqueKey}"
         if (itemId in downloadingIds) return
-        val source = PuzzleSources.byId(entry.sourceId) ?: return
+        val source = sources.firstOrNull { it.id == entry.sourceId } ?: return
         downloadingIds = downloadingIds + itemId
         viewModelScope.launch {
             try {
