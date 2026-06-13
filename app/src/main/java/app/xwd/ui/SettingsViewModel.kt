@@ -217,7 +217,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     )
 
     private companion object {
-        /** Pause between bulk downloads, to be gentle on rate-limited hosts. */
-        const val THROTTLE_MS = 150L
+        /**
+         * Small pause between bulk downloads. Kept short: the real protection
+         * against rate-limits is the backoff/retry in the downloader, so this
+         * is just a light floor, not the throttle that made runs crawl.
+         */
+        const val THROTTLE_MS = 40L
     }
 }
