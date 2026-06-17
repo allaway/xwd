@@ -143,6 +143,8 @@ data class GridColors(
     val number: Color,
     val wrong: Color,
     val revealed: Color,
+    /** Cells referenced by the current clue text (e.g. "see 32 down"). */
+    val referenced: Color,
     /** When set, word cells are filled with halftone dots of this color (riso). */
     val wordHalftone: Color? = null,
 )
@@ -160,6 +162,7 @@ val Skin.gridColors: GridColors
             number = MarginsT.muted,
             wrong = Color(0xFFB3402A),
             revealed = MarginsT.ochreDeep,
+            referenced = Color(0xFFD4ECE8),
         )
         Skin.TERMINAL -> GridColors(
             paper = TermT.panel,
@@ -172,6 +175,7 @@ val Skin.gridColors: GridColors
             number = TermT.dim,
             wrong = Color(0xFFFF7A66),
             revealed = TermT.amber,
+            referenced = Color(0xFF0E1E2A),
         )
         Skin.OVERPRINT -> GridColors(
             paper = RisoT.paper,
@@ -184,6 +188,7 @@ val Skin.gridColors: GridColors
             number = RisoT.blueMuted,
             wrong = RisoT.pinkDeep,
             revealed = RisoT.purple,
+            referenced = Color(0xFFE4D4F5),
             wordHalftone = RisoT.pink.copy(alpha = 0.55f),
         )
     }

@@ -72,6 +72,9 @@ import app.xwd.ui.theme.offsetShadow
 import kotlinx.coroutines.delay
 import java.util.Locale
 
+/** Minimum lines reserved in the clue bar text to prevent layout shifts. */
+private const val ClueBarMinLines = 2
+
 /**
  * Smallest readable/tappable cell. Grids that can't fit the screen at this
  * size (supermaxi and up on most phones) render at exactly this size inside
@@ -175,6 +178,7 @@ fun SolveScreen(viewModel: SolveViewModel, onBack: () -> Unit) {
                             revealed = viewModel.revealed,
                             onCellTap = viewModel::selectCell,
                             modifier = Modifier.size(fitCell * puzzle.width, fitCell * puzzle.height),
+                            referencedCells = viewModel.referencedCells,
                         )
                     }
                 } else {
@@ -212,6 +216,7 @@ fun SolveScreen(viewModel: SolveViewModel, onBack: () -> Unit) {
                                 MinSolveCell * puzzle.width,
                                 MinSolveCell * puzzle.height,
                             ),
+                            referencedCells = viewModel.referencedCells,
                         )
                     }
                 }
@@ -350,9 +355,10 @@ private fun MarginsClueBar(viewModel: SolveViewModel) {
                         fontStyle = FontStyle.Italic,
                         color = MarginsT.ink,
                         lineHeight = 20.sp,
+                        minLines = ClueBarMinLines,
                         textAlign = TextAlign.Center,
                     )
-                }
+                } ?: Text("", fontSize = 15.sp, minLines = ClueBarMinLines)
             }
             Text(
                 "›", fontSize = 18.sp, color = MarginsT.faint,
@@ -436,9 +442,10 @@ private fun TermClueBar(viewModel: SolveViewModel) {
                 color = TermT.bright,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
+                minLines = ClueBarMinLines,
                 modifier = Modifier.weight(1f),
             )
-        } ?: Spacer(Modifier.weight(1f))
+        } ?: Text("", fontSize = 13.sp, minLines = ClueBarMinLines, modifier = Modifier.weight(1f))
         Text("›", color = TermT.dim, fontSize = 13.sp, modifier = Modifier.tap { viewModel.nextClue() })
     }
 }
@@ -569,9 +576,10 @@ private fun RisoClueBar(viewModel: SolveViewModel) {
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     lineHeight = 18.sp,
+                    minLines = ClueBarMinLines,
                     modifier = Modifier.weight(1f),
                 )
-            } ?: Spacer(Modifier.weight(1f))
+            } ?: Text("", fontSize = 14.sp, minLines = ClueBarMinLines, modifier = Modifier.weight(1f))
             Text("›", color = RisoT.blueMuted, fontSize = 17.sp, modifier = Modifier.tap { viewModel.nextClue() })
         }
     }
@@ -628,6 +636,8 @@ private fun ClueSheet(viewModel: SolveViewModel, onDismiss: () -> Unit) {
         ) {
             items(clues, key = { "${it.direction}-${it.number}" }) { clue ->
                 val filled = clue.cells.all { viewModel.letters[it] != '-' }
+                val correct = filled && clue.cells.none { viewModel.isWrong(it) } &&
+                    clue.cells.all { viewModel.letters[it] != '-' }
                 val isCurrent = clue == viewModel.currentClue
                 Row(
                     modifier = Modifier
@@ -637,6 +647,7 @@ private fun ClueSheet(viewModel: SolveViewModel, onDismiss: () -> Unit) {
                             onDismiss()
                         }
                         .padding(horizontal = 20.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         clue.number.toString(),
@@ -650,10 +661,27 @@ private fun ClueSheet(viewModel: SolveViewModel, onDismiss: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = when {
                             isCurrent -> MaterialTheme.colorScheme.primary
-                            filled -> MaterialTheme.colorScheme.onSurfaceVariant
+                            correct -> MaterialTheme.colorScheme.onSurfaceVariant
+                            filled -> MaterialTheme.colorScheme.onSurface
                             else -> MaterialTheme.colorScheme.onSurface
                         },
+                        modifier = Modifier.weight(1f),
                     )
+                    if (correct) {
+                        Text(
+                            "✓",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    } else if (filled) {
+                        Text(
+                            "…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
                 }
             }
         }

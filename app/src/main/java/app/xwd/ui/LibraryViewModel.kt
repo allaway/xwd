@@ -97,9 +97,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         refreshNewest()
     }
 
+    private val crypticSourceIds: Set<String>
+        get() = sources.filter { it.isCryptic }.map { it.id }.toSet()
+
     /** The feed: the catalog joined against saved puzzles, in stable order. */
     fun feed(saved: List<PuzzleEntity>, catalog: List<CatalogEntity>): List<LibraryItem> =
-        LibraryFeed.build(saved, catalog, disabledSources, filters)
+        LibraryFeed.build(saved, catalog, disabledSources, crypticSourceIds, filters)
 
     fun setDownloadedOnly(value: Boolean) {
         filters = filters.copy(downloadedOnly = value)
@@ -111,6 +114,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun setSizeFilter(size: SizeClass?) {
         filters = filters.copy(size = size)
+    }
+
+    fun setPuzzleTypeFilter(type: PuzzleType?) {
+        filters = filters.copy(puzzleType = type)
     }
 
     fun clearFilters() {

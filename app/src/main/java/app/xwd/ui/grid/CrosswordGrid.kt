@@ -31,6 +31,7 @@ fun CrosswordGrid(
     revealed: Set<Int>,
     onCellTap: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    referencedCells: Set<Int> = emptySet(),
 ) {
     val skin = LocalSkin.current
     val colors = skin.gridColors
@@ -76,9 +77,11 @@ fun CrosswordGrid(
             }
             val isSelected = i == selected
             val inWord = i in wordSet
+            val isReferenced = i in referencedCells
             val background = when {
                 isSelected -> colors.selected
                 inWord -> colors.word
+                isReferenced -> colors.referenced
                 else -> colors.paper
             }
             drawRect(background, topLeft, boxSize)
