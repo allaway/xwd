@@ -64,6 +64,7 @@ data class PuzzleSource(
     val attribution: String,
     val licenseBasis: String,
     val fetch: Fetch,
+    val isCryptic: Boolean = false,
 )
 
 object PuzzleSources {
@@ -241,6 +242,7 @@ object PuzzleSources {
                 linkPattern = ANY_PUZ,
                 resolveUrl = resolver("https://www.private-eye.co.uk/crossword"),
             ),
+            isCryptic = true,
         ),
         PuzzleSource(
             id = "crosshare-mini",

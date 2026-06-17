@@ -72,6 +72,7 @@ import app.xwd.model.SizeClass
 import app.xwd.sources.PuzzleDownloader.CatalogEntry
 import app.xwd.ui.LibraryItem
 import app.xwd.ui.LibraryViewModel
+import app.xwd.ui.PuzzleType
 import app.xwd.ui.theme.DottedRule
 import app.xwd.ui.theme.LocalSkin
 import app.xwd.ui.theme.MarginsT
@@ -198,6 +199,7 @@ private fun filterSummary(viewModel: LibraryViewModel): String {
         if (f.downloadedOnly) add("downloaded")
         f.size?.let { add(it.label.lowercase(Locale.US)) }
         f.sourceId?.let { add(viewModel.sourceName(it).lowercase(Locale.US)) }
+        f.puzzleType?.let { add(if (it == PuzzleType.CRYPTIC) "cryptic" else "normal") }
     }
     return if (parts.isEmpty()) "showing everything" else "showing " + parts.joinToString(" · ")
 }
@@ -397,31 +399,47 @@ private fun MarginsSavedCard(p: PuzzleEntity, actions: LibraryActions) {
             )
         }
         if (p.isCompleted) {
-            Text(
-                "✓ Solved in ${formatSeconds(p.elapsedSeconds)}" + if (p.isClean()) " — clean" else "",
-                fontSize = 13.sp,
-                color = MarginsT.ochreDeep,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(top = 12.dp),
-            )
+            ) {
+                Text("✓", fontSize = 13.sp, color = MarginsT.ochreDeep, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(end = 5.dp))
+                Text(
+                    "Solved in ${formatSeconds(p.elapsedSeconds)}" + if (p.isClean()) " — clean" else "",
+                    fontSize = 13.sp,
+                    color = MarginsT.ochreDeep,
+                )
+            }
         } else {
             val fraction = progressFraction(p)
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 13.dp)) {
-                // Pencil progress: a dashed baseline with a graphite fill on top.
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    DottedRule(MarginsT.dotted, Modifier.fillMaxWidth())
-                    Box(
-                        Modifier
-                            .fillMaxWidth(fraction)
-                            .height(2.5.dp)
-                            .background(MarginsT.graphite, RoundedCornerShape(2.dp)),
+            val started = fraction > 0f
+            if (started) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 13.dp)) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        DottedRule(MarginsT.dotted, Modifier.fillMaxWidth())
+                        Box(
+                            Modifier
+                                .fillMaxWidth(fraction)
+                                .height(2.5.dp)
+                                .background(MarginsT.graphite, RoundedCornerShape(2.dp)),
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "${(fraction * 100).toInt()}% · ${formatSeconds(p.elapsedSeconds)}",
+                        fontSize = 12.sp,
+                        color = MarginsT.graphite,
+                        fontWeight = FontWeight.Medium,
                     )
                 }
-                Spacer(Modifier.width(10.dp))
+            } else {
                 Text(
-                    if (fraction == 0f) "not started"
-                    else "${(fraction * 100).toInt()}% · ${formatSeconds(p.elapsedSeconds)}",
+                    "not started",
                     fontSize = 12.sp,
-                    color = MarginsT.muted,
+                    color = MarginsT.faint,
+                    fontStyle = FontStyle.Italic,
+                    modifier = Modifier.padding(top = 13.dp),
                 )
             }
         }
@@ -642,18 +660,25 @@ private fun TermSavedRow(p: PuzzleEntity, actions: LibraryActions) {
         }
     } else {
         val pct = (progressFraction(p) * 100).toInt()
+        val started = pct > 0
         TermRow(
-            "▸", TermT.amber, p.title.lowercase(Locale.US), meta,
+            if (started) "▶" else "○",
+            if (started) TermT.amber else TermT.dim,
+            p.title.lowercase(Locale.US), meta,
             onClick = { actions.onOpenPuzzle(p.id) },
             onLongClick = { actions.onDelete(p) },
         ) {
-            val (full, empty) = termGauge(pct)
-            Row {
-                Text(full, color = TermT.green, fontSize = 11.5.sp, letterSpacing = 0.5.sp)
-                Text(empty, color = TermT.keyBorder, fontSize = 11.5.sp, letterSpacing = 0.5.sp)
+            if (started) {
+                val (full, empty) = termGauge(pct)
+                Row {
+                    Text(full, color = TermT.green, fontSize = 11.5.sp, letterSpacing = 0.5.sp)
+                    Text(empty, color = TermT.keyBorder, fontSize = 11.5.sp, letterSpacing = 0.5.sp)
+                }
+                Text("$pct%", color = TermT.muted, fontSize = 11.5.sp)
+                Text(formatSeconds(p.elapsedSeconds), color = TermT.muted, fontSize = 11.5.sp)
+            } else {
+                Text("not started", color = TermT.offText, fontSize = 11.5.sp)
             }
-            Text("$pct%", color = TermT.muted, fontSize = 11.5.sp)
-            Text(formatSeconds(p.elapsedSeconds), color = TermT.muted, fontSize = 11.5.sp)
         }
     }
 }
@@ -848,27 +873,38 @@ private fun RisoSavedCard(p: PuzzleEntity, actions: LibraryActions) {
             )
         } else {
             val fraction = progressFraction(p)
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 13.dp)) {
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(12.dp)
-                        .border(2.dp, RisoT.blue, RoundedCornerShape(99.dp))
-                        .padding(3.dp),
-                ) {
+            val started = fraction > 0f
+            if (started) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 13.dp)) {
                     Box(
                         Modifier
-                            .fillMaxWidth(fraction)
-                            .fillMaxSize()
-                            .background(RisoT.pinkPale, RoundedCornerShape(99.dp)),
+                            .weight(1f)
+                            .height(12.dp)
+                            .border(2.dp, RisoT.blue, RoundedCornerShape(99.dp))
+                            .padding(3.dp),
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(fraction)
+                                .fillMaxSize()
+                                .background(RisoT.pinkPale, RoundedCornerShape(99.dp)),
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "${(fraction * 100).toInt()}%",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = RisoT.blue,
                     )
                 }
-                Spacer(Modifier.width(10.dp))
+            } else {
                 Text(
-                    "${(fraction * 100).toInt()}%",
+                    "↓ not started",
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = RisoT.blue,
+                    fontWeight = FontWeight.SemiBold,
+                    color = RisoT.blueMuted,
+                    modifier = Modifier.padding(top = 13.dp),
                 )
             }
         }
@@ -1066,6 +1102,16 @@ private fun LibraryFilterSheet(viewModel: LibraryViewModel, onDismiss: () -> Uni
                     ChoiceChip(source.name, selected = filters.sourceId == source.id) {
                         viewModel.setSourceFilter(source.id)
                     }
+                }
+            }
+
+            FilterGroup("Type") {
+                ChoiceChip("Any", selected = filters.puzzleType == null) { viewModel.setPuzzleTypeFilter(null) }
+                ChoiceChip("Normal", selected = filters.puzzleType == PuzzleType.NORMAL) {
+                    viewModel.setPuzzleTypeFilter(PuzzleType.NORMAL)
+                }
+                ChoiceChip("Cryptic", selected = filters.puzzleType == PuzzleType.CRYPTIC) {
+                    viewModel.setPuzzleTypeFilter(PuzzleType.CRYPTIC)
                 }
             }
 

@@ -29,6 +29,8 @@ sealed interface LibraryItem {
     }
 }
 
+enum class PuzzleType { CRYPTIC, NORMAL }
+
 /**
  * The library's view filters. All independent; an empty [LibraryFilters] shows
  * everything. [size] is known only for downloaded puzzles, so selecting a size
@@ -38,11 +40,13 @@ data class LibraryFilters(
     val downloadedOnly: Boolean = false,
     val sourceId: String? = null,
     val size: SizeClass? = null,
+    val puzzleType: PuzzleType? = null,
 ) {
     val activeCount: Int
         get() = (if (downloadedOnly) 1 else 0) +
             (if (sourceId != null) 1 else 0) +
-            (if (size != null) 1 else 0)
+            (if (size != null) 1 else 0) +
+            (if (puzzleType != null) 1 else 0)
 
     val isActive: Boolean get() = activeCount > 0
 }
@@ -60,6 +64,7 @@ object LibraryFeed {
         saved: List<PuzzleEntity>,
         catalog: List<CatalogEntity>,
         disabledSources: Set<String>,
+        crypticSourceIds: Set<String>,
         filters: LibraryFilters,
     ): List<LibraryItem> {
         val savedById = saved.associateBy { it.id }
@@ -87,7 +92,11 @@ object LibraryFeed {
         val visible = items.filter { item ->
             (!filters.downloadedOnly || item is LibraryItem.Saved) &&
                 (filters.sourceId == null || item.sourceId == filters.sourceId) &&
-                (filters.size == null || item.sizeClass == filters.size)
+                (filters.size == null || item.sizeClass == filters.size) &&
+                (filters.puzzleType == null || when (filters.puzzleType) {
+                    PuzzleType.CRYPTIC -> item.sourceId in crypticSourceIds
+                    PuzzleType.NORMAL -> item.sourceId !in crypticSourceIds
+                })
         }
         return visible.sortedWith(compareByDescending<LibraryItem> { it.sortDate }.thenBy { it.id })
     }

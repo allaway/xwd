@@ -85,6 +85,21 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     val currentWord: List<Int>
         get() = currentClue?.cells ?: emptyList()
 
+    /** Cells of other clues referenced in the current clue text (e.g. "see 32 down"). */
+    val referencedCells: Set<Int>
+        get() {
+            val p = puzzle ?: return emptySet()
+            val text = currentClue?.text ?: return emptySet()
+            val pattern = Regex("""(\d+)[\s\-]*(across|down)""", RegexOption.IGNORE_CASE)
+            return pattern.findAll(text).flatMap { match ->
+                val num = match.groupValues[1].toIntOrNull() ?: return@flatMap emptySequence()
+                val dir = if (match.groupValues[2].equals("across", ignoreCase = true))
+                    Direction.ACROSS else Direction.DOWN
+                (p.clues.firstOrNull { it.number == num && it.direction == dir }?.cells
+                    ?: emptyList()).asSequence()
+            }.toSet()
+        }
+
     fun isWrong(index: Int): Boolean {
         val p = puzzle ?: return false
         val ch = letters.getOrNull(index) ?: return false
@@ -113,9 +128,40 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
         selected = clue.cells.firstOrNull { letters[it] == '-' } ?: clue.cells.first()
     }
 
-    fun nextClue() = puzzle?.let { p -> currentClue?.let { selectClue(p.nextClue(it)) } }
+    fun nextClue() {
+        val p = puzzle ?: return
+        val current = currentClue ?: return
+        var next = p.nextClue(current)
+        if (autocheck) {
+            var guard = p.clues.size
+            while (guard-- > 0 && next != current && isClueCorrect(next)) {
+                next = p.nextClue(next)
+            }
+        }
+        selectClue(next)
+    }
 
-    fun previousClue() = puzzle?.let { p -> currentClue?.let { selectClue(p.previousClue(it)) } }
+    fun previousClue() {
+        val p = puzzle ?: return
+        val current = currentClue ?: return
+        var prev = p.previousClue(current)
+        if (autocheck) {
+            var guard = p.clues.size
+            while (guard-- > 0 && prev != current && isClueCorrect(prev)) {
+                prev = p.previousClue(prev)
+            }
+        }
+        selectClue(prev)
+    }
+
+    private fun isClueCorrect(clue: Clue): Boolean {
+        val p = puzzle ?: return false
+        if (p.scrambled) return false
+        return clue.cells.all { i ->
+            val ch = letters.getOrNull(i) ?: return false
+            ch != '-' && ch == p.cells[i].solution
+        }
+    }
 
     fun input(char: Char) {
         if (completionState == CompletionState.SOLVED) return
