@@ -19,6 +19,7 @@ import app.xwd.sources.PuzzleDownloader.CatalogEntry
 import app.xwd.sources.PuzzleSource
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -40,6 +41,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     var downloading: Boolean by mutableStateOf(false)
         private set
     var message: String? by mutableStateOf(null)
+
+    /** True once the first Room emission has arrived; gates the empty-library message. */
+    var isDataReady: Boolean by mutableStateOf(false)
+        private set
 
     /** Built-in sources plus the user's custom feeds; reloaded on resume. */
     var sources: List<PuzzleSource> by mutableStateOf(SourceRegistry.resolved(application))
@@ -78,6 +83,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private var refreshing = false
 
     init {
+        viewModelScope.launch {
+            // Wait for the first DB emission so we don't show the empty-library
+            // message during the brief moment before Room delivers its snapshot.
+            repo.observeAll().first()
+            isDataReady = true
+        }
         refreshNewest()
     }
 

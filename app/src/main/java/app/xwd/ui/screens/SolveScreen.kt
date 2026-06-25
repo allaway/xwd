@@ -4,6 +4,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -49,11 +50,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,6 +81,55 @@ import java.util.Locale
 
 /** Minimum lines reserved in the clue bar text to prevent layout shifts. */
 private const val ClueBarMinLines = 2
+
+private val XRefPattern = Regex("""(\d+)[\s\-]*(across|down)""", RegexOption.IGNORE_CASE)
+private const val XRefTag = "XREF"
+
+/**
+ * Annotates cross-references in a clue string (e.g. "32 down") with a link
+ * style and a string annotation so taps can jump to the referenced clue.
+ */
+private fun annotateClue(text: String, linkStyle: SpanStyle): AnnotatedString =
+    buildAnnotatedString {
+        append(text)
+        XRefPattern.findAll(text).forEach { match ->
+            addStyle(linkStyle, match.range.first, match.range.last + 1)
+            addStringAnnotation(XRefTag, match.value, match.range.first, match.range.last + 1)
+        }
+    }
+
+/** Tappable clue text that jumps to referenced clues when the annotation is hit. */
+@Composable
+private fun ClueText(
+    annotated: AnnotatedString,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    viewModel: SolveViewModel,
+) {
+    var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    Text(
+        text = annotated,
+        style = style,
+        minLines = ClueBarMinLines,
+        onTextLayout = { layoutResult = it },
+        modifier = modifier.pointerInput(annotated) {
+            detectTapGestures { pos ->
+                layoutResult?.let { lr ->
+                    val offset = lr.getOffsetForPosition(pos)
+                    annotated.getStringAnnotations(XRefTag, offset, offset).firstOrNull()
+                        ?.let { ann ->
+                            XRefPattern.find(ann.item)?.let { m ->
+                                val num = m.groupValues[1].toIntOrNull() ?: return@let
+                                val dir = if (m.groupValues[2].equals("across", ignoreCase = true))
+                                    Direction.ACROSS else Direction.DOWN
+                                viewModel.selectClueByRef(num, dir)
+                            }
+                        }
+                }
+            }
+        },
+    )
+}
 
 /**
  * Smallest readable/tappable cell. Grids that can't fit the screen at this
@@ -349,14 +405,19 @@ private fun MarginsClueBar(viewModel: SolveViewModel) {
                         color = MarginsT.ochreDeep,
                         modifier = Modifier.padding(end = 7.dp),
                     )
-                    Text(
-                        it.text,
-                        fontSize = 15.sp,
-                        fontStyle = FontStyle.Italic,
-                        color = MarginsT.ink,
-                        lineHeight = 20.sp,
-                        minLines = ClueBarMinLines,
-                        textAlign = TextAlign.Center,
+                    ClueText(
+                        annotated = annotateClue(it.text, SpanStyle(
+                            color = MarginsT.ochreDeep,
+                            textDecoration = TextDecoration.Underline,
+                        )),
+                        style = TextStyle(
+                            fontSize = 15.sp,
+                            fontStyle = FontStyle.Italic,
+                            color = MarginsT.ink,
+                            lineHeight = 20.sp,
+                            textAlign = TextAlign.Center,
+                        ),
+                        viewModel = viewModel,
                     )
                 } ?: Text("", fontSize = 15.sp, minLines = ClueBarMinLines)
             }
@@ -437,13 +498,18 @@ private fun TermClueBar(viewModel: SolveViewModel) {
                 color = TermT.amber,
                 fontSize = 13.sp,
             )
-            Text(
-                it.text.lowercase(Locale.US),
-                color = TermT.bright,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                minLines = ClueBarMinLines,
+            ClueText(
+                annotated = annotateClue(it.text.lowercase(Locale.US), SpanStyle(
+                    color = TermT.amber,
+                    textDecoration = TextDecoration.Underline,
+                )),
+                style = TextStyle(
+                    color = TermT.bright,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                ),
                 modifier = Modifier.weight(1f),
+                viewModel = viewModel,
             )
         } ?: Text("", fontSize = 13.sp, minLines = ClueBarMinLines, modifier = Modifier.weight(1f))
         Text("›", color = TermT.dim, fontSize = 13.sp, modifier = Modifier.tap { viewModel.nextClue() })
@@ -570,14 +636,19 @@ private fun RisoClueBar(viewModel: SolveViewModel) {
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 14.sp,
                 )
-                Text(
-                    it.text,
-                    color = RisoT.blue,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    lineHeight = 18.sp,
-                    minLines = ClueBarMinLines,
+                ClueText(
+                    annotated = annotateClue(it.text, SpanStyle(
+                        color = RisoT.pinkDeep,
+                        textDecoration = TextDecoration.Underline,
+                    )),
+                    style = TextStyle(
+                        color = RisoT.blue,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 18.sp,
+                    ),
                     modifier = Modifier.weight(1f),
+                    viewModel = viewModel,
                 )
             } ?: Text("", fontSize = 14.sp, minLines = ClueBarMinLines, modifier = Modifier.weight(1f))
             Text("›", color = RisoT.blueMuted, fontSize = 17.sp, modifier = Modifier.tap { viewModel.nextClue() })

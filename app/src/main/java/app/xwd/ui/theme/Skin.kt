@@ -165,11 +165,11 @@ val Skin.gridColors: GridColors
             referenced = Color(0xFFD4ECE8),
         )
         Skin.TERMINAL -> GridColors(
-            paper = TermT.panel,
+            paper = Color(0xFF1C281C),
             block = Color(0xFF000000),
-            line = Color(0xFF2C3A2C),
+            line = TermT.gridBorder,
             selected = TermT.green,
-            word = Color(0xFF1D2B1D),
+            word = Color(0xFF263826),
             letter = TermT.glow,
             selectedLetter = TermT.bg,
             number = TermT.dim,

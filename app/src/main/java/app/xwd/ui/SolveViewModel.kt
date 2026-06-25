@@ -122,6 +122,12 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
         }
     }
 
+    fun selectClueByRef(number: Int, direction: Direction) {
+        val p = puzzle ?: return
+        val clue = p.clues.firstOrNull { it.number == number && it.direction == direction } ?: return
+        selectClue(clue)
+    }
+
     fun selectClue(clue: Clue) {
         noteActivity()
         direction = clue.direction
