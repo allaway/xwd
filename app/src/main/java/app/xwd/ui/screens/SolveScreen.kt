@@ -300,6 +300,10 @@ fun SolveScreen(viewModel: SolveViewModel, onBack: () -> Unit) {
     if (viewModel.showCompletionDialog) {
         CompletionDialog(viewModel)
     }
+
+    if (viewModel.showNotesDialog) {
+        NotesDialog(viewModel)
+    }
 }
 
 @Composable
@@ -764,22 +768,35 @@ private fun CompletionDialog(viewModel: SolveViewModel) {
     val solved = viewModel.completionState == CompletionState.SOLVED
     AlertDialog(
         onDismissRequest = { viewModel.dismissCompletionDialog() },
-        title = { Text(if (solved) "Congratulations! 🎉" else "Almost there…") },
+        title = { Text(if (solved) “Congratulations! 🎉” else “Almost there…”) },
         text = {
             Text(
                 if (solved) {
-                    "You solved “${viewModel.puzzle?.title}” in " +
-                        formatSeconds(viewModel.elapsedSeconds) + "."
+                    “You solved “${viewModel.puzzle?.title}” in “ +
+                        formatSeconds(viewModel.elapsedSeconds) + “.”
                 } else {
-                    "The grid is full, but at least one square isn't right. " +
-                        "Try Autocheck or Check puzzle to find the errors."
+                    “The grid is full, but at least one square isn't right. “ +
+                        “Try Autocheck or Check puzzle to find the errors.”
                 },
             )
         },
         confirmButton = {
             TextButton(onClick = { viewModel.dismissCompletionDialog() }) {
-                Text(if (solved) "Nice!" else "Keep going")
+                Text(if (solved) “Nice!” else “Keep going”)
             }
+        },
+    )
+}
+
+@Composable
+private fun NotesDialog(viewModel: SolveViewModel) {
+    val notes = viewModel.puzzle?.notes ?: return
+    AlertDialog(
+        onDismissRequest = { viewModel.dismissNotesDialog() },
+        title = { Text(viewModel.puzzle?.title.orEmpty()) },
+        text = { Text(notes) },
+        confirmButton = {
+            TextButton(onClick = { viewModel.dismissNotesDialog() }) { Text(“OK”) }
         },
     )
 }

@@ -75,6 +75,7 @@ import app.xwd.sources.PuzzleDownloader.CatalogEntry
 import app.xwd.ui.LibraryItem
 import app.xwd.ui.LibraryViewModel
 import app.xwd.ui.PuzzleType
+import app.xwd.ui.SortOrder
 import app.xwd.ui.theme.DottedRule
 import app.xwd.ui.theme.LocalSkin
 import app.xwd.ui.theme.MarginsT
@@ -203,6 +204,7 @@ private fun filterSummary(viewModel: LibraryViewModel): String {
         f.size?.let { add(it.label.lowercase(Locale.US)) }
         f.sourceId?.let { add(viewModel.sourceName(it).lowercase(Locale.US)) }
         f.puzzleType?.let { add(if (it == PuzzleType.CRYPTIC) "cryptic" else "normal") }
+        if (f.sortOrder != SortOrder.DATE) add("sorted by ${f.sortOrder.label.lowercase(Locale.US)}")
     }
     return if (parts.isEmpty()) "showing everything" else "showing " + parts.joinToString(" · ")
 }
@@ -1285,6 +1287,14 @@ private fun LibraryFilterSheet(viewModel: LibraryViewModel, onDismiss: () -> Uni
                 }
                 ChoiceChip("Cryptic", selected = filters.puzzleType == PuzzleType.CRYPTIC) {
                     viewModel.setPuzzleTypeFilter(PuzzleType.CRYPTIC)
+                }
+            }
+
+            FilterGroup("Sort by") {
+                SortOrder.entries.forEach { order ->
+                    ChoiceChip(order.label, selected = filters.sortOrder == order) {
+                        viewModel.setSortOrder(order)
+                    }
                 }
             }
 

@@ -31,6 +31,12 @@ sealed interface LibraryItem {
 
 enum class PuzzleType { CRYPTIC, NORMAL }
 
+enum class SortOrder(val label: String) {
+    DATE("Date"),
+    TITLE("Title"),
+    SIZE("Size"),
+}
+
 /**
  * The library's view filters. All independent; an empty [LibraryFilters] shows
  * everything. [size] is known only for downloaded puzzles, so selecting a size
@@ -41,12 +47,14 @@ data class LibraryFilters(
     val sourceId: String? = null,
     val size: SizeClass? = null,
     val puzzleType: PuzzleType? = null,
+    val sortOrder: SortOrder = SortOrder.DATE,
 ) {
     val activeCount: Int
         get() = (if (downloadedOnly) 1 else 0) +
             (if (sourceId != null) 1 else 0) +
             (if (size != null) 1 else 0) +
-            (if (puzzleType != null) 1 else 0)
+            (if (puzzleType != null) 1 else 0) +
+            (if (sortOrder != SortOrder.DATE) 1 else 0)
 
     val isActive: Boolean get() = activeCount > 0
 }
@@ -98,7 +106,17 @@ object LibraryFeed {
                     PuzzleType.NORMAL -> item.sourceId !in crypticSourceIds
                 })
         }
-        return visible.sortedWith(compareByDescending<LibraryItem> { it.sortDate }.thenBy { it.id })
+        val comparator = when (filters.sortOrder) {
+            SortOrder.DATE -> compareByDescending<LibraryItem> { it.sortDate }.thenBy { it.id }
+            SortOrder.TITLE -> compareBy<LibraryItem> {
+                (it as? LibraryItem.Saved)?.entity?.title?.lowercase()
+                    ?: (it as? LibraryItem.Remote)?.entry?.title?.lowercase()
+                    ?: ""
+            }.thenByDescending { it.sortDate }
+            SortOrder.SIZE -> compareBy<LibraryItem> { it.sizeClass?.ordinal ?: Int.MAX_VALUE }
+                .thenByDescending { it.sortDate }
+        }
+        return visible.sortedWith(comparator)
     }
 
     private fun parseDate(iso: String): LocalDate =

@@ -131,6 +131,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         filters = filters.copy(puzzleType = type)
     }
 
+    fun setSortOrder(order: SortOrder) {
+        filters = filters.copy(sortOrder = order)
+    }
+
     fun clearFilters() {
         filters = LibraryFilters()
     }
