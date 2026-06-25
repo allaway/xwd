@@ -772,7 +772,7 @@ private fun CompletionDialog(viewModel: SolveViewModel) {
         text = {
             Text(
                 if (solved) {
-                    “You solved “${viewModel.puzzle?.title}” in “ +
+                    “You solved \”${viewModel.puzzle?.title}\” in “ +
                         formatSeconds(viewModel.elapsedSeconds) + “.”
                 } else {
                     “The grid is full, but at least one square isn't right. “ +
