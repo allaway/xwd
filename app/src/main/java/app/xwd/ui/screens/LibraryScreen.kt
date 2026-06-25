@@ -21,11 +21,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -73,6 +75,7 @@ import app.xwd.sources.PuzzleDownloader.CatalogEntry
 import app.xwd.ui.LibraryItem
 import app.xwd.ui.LibraryViewModel
 import app.xwd.ui.PuzzleType
+import app.xwd.ui.SortOrder
 import app.xwd.ui.theme.DottedRule
 import app.xwd.ui.theme.LocalSkin
 import app.xwd.ui.theme.MarginsT
@@ -102,6 +105,7 @@ fun LibraryScreen(
     var pendingDelete by remember { mutableStateOf<PuzzleEntity?>(null) }
 
     val feed = viewModel.feed(puzzles, catalog)
+    val inProgress = inProgressPuzzles(puzzles)
     val listState = rememberLazyListState()
 
     // Re-read feeds/toggles changed in Settings whenever the library resumes.
@@ -147,9 +151,9 @@ fun LibraryScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (LocalSkin.current) {
-                Skin.MARGINS -> MarginsLibrary(viewModel, feed, listState, actions)
-                Skin.TERMINAL -> TermLibrary(viewModel, feed, catalogSize = catalog.size, listState, actions)
-                Skin.OVERPRINT -> RisoLibrary(viewModel, feed, listState, actions)
+                Skin.MARGINS -> MarginsLibrary(viewModel, feed, listState, actions, inProgress)
+                Skin.TERMINAL -> TermLibrary(viewModel, feed, catalogSize = catalog.size, listState, actions, inProgress)
+                Skin.OVERPRINT -> RisoLibrary(viewModel, feed, listState, actions, inProgress)
             }
         }
     }
@@ -200,6 +204,7 @@ private fun filterSummary(viewModel: LibraryViewModel): String {
         f.size?.let { add(it.label.lowercase(Locale.US)) }
         f.sourceId?.let { add(viewModel.sourceName(it).lowercase(Locale.US)) }
         f.puzzleType?.let { add(if (it == PuzzleType.CRYPTIC) "cryptic" else "normal") }
+        if (f.sortOrder != SortOrder.DATE) add("sorted by ${f.sortOrder.label.lowercase(Locale.US)}")
     }
     return if (parts.isEmpty()) "showing everything" else "showing " + parts.joinToString(" · ")
 }
@@ -247,6 +252,164 @@ private fun progressFraction(p: PuzzleEntity): Float =
 private fun todayLine(): String =
     LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.US))
 
+/** Puzzles started but not completed, for the in-progress strip. */
+private fun inProgressPuzzles(saved: List<PuzzleEntity>): List<PuzzleEntity> =
+    saved.filter { it.filledCount > 0 && !it.isCompleted }
+        .sortedByDescending { it.elapsedSeconds }
+
+/* ===================== In-progress strips (per skin) ===================== */
+
+@Composable
+private fun MarginsInProgressStrip(items: List<PuzzleEntity>, onOpen: (String) -> Unit) {
+    if (items.isEmpty()) return
+    Column {
+        Text(
+            "IN PROGRESS",
+            fontSize = 9.5.sp,
+            letterSpacing = 2.sp,
+            color = MarginsT.muted,
+            modifier = Modifier.padding(start = 24.dp, top = 12.dp, bottom = 7.dp),
+        )
+        Row(
+            Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items.forEach { p ->
+                val fraction = progressFraction(p)
+                Column(
+                    Modifier
+                        .width(132.dp)
+                        .height(82.dp)
+                        .background(MarginsT.card, RoundedCornerShape(4.dp))
+                        .border(1.dp, MarginsT.cardBorder, RoundedCornerShape(4.dp))
+                        .clickableNoRipple { onOpen(p.id) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Text(
+                        p.title,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MarginsT.ink,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        "${p.sourceName} · ${(fraction * 100).toInt()}%",
+                        fontSize = 9.5.sp,
+                        color = MarginsT.muted,
+                        modifier = Modifier.padding(top = 5.dp),
+                    )
+                    Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.CenterStart) {
+                        DottedRule(MarginsT.dotted, Modifier.fillMaxWidth())
+                        Box(Modifier.fillMaxWidth(fraction).height(2.dp).background(MarginsT.graphite, RoundedCornerShape(2.dp)))
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(MarginsT.divider))
+    }
+}
+
+@Composable
+private fun TermInProgressStrip(items: List<PuzzleEntity>, onOpen: (String) -> Unit) {
+    if (items.isEmpty()) return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        items.forEach { p ->
+            val pct = (progressFraction(p) * 100).toInt()
+            Text(
+                "▶ ${p.title.lowercase(Locale.US)} $pct%",
+                color = TermT.amber,
+                fontSize = 11.sp,
+                maxLines = 1,
+                modifier = Modifier.clickableNoRipple { onOpen(p.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RisoInProgressStrip(items: List<PuzzleEntity>, onOpen: (String) -> Unit) {
+    if (items.isEmpty()) return
+    Column(Modifier.padding(top = 10.dp)) {
+        Text(
+            "IN PROGRESS",
+            fontSize = 9.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 1.6.sp,
+            color = RisoT.pinkDeep,
+            modifier = Modifier.padding(start = 22.dp, bottom = 7.dp),
+        )
+        Row(
+            Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items.forEach { p ->
+                val fraction = progressFraction(p)
+                val shape = RoundedCornerShape(8.dp)
+                Column(
+                    Modifier
+                        .width(130.dp)
+                        .height(82.dp)
+                        .background(RisoT.paper, shape)
+                        .border(2.dp, RisoT.blue, shape)
+                        .clickableNoRipple { onOpen(p.id) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Text(
+                        p.title.trim('"', '"', '"'),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = RisoT.blue,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 14.sp,
+                        letterSpacing = (-0.2).sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 5.dp),
+                    ) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .height(8.dp)
+                                .border(1.5.dp, RisoT.blue, RoundedCornerShape(99.dp))
+                                .padding(2.dp),
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth(fraction)
+                                    .fillMaxSize()
+                                    .background(RisoT.pinkPale, RoundedCornerShape(99.dp)),
+                            )
+                        }
+                        Text(
+                            " ${(fraction * 100).toInt()}%",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = RisoT.blue,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 /* ===================== Skin 01 · Margins ===================== */
 
 @Composable
@@ -255,6 +418,7 @@ private fun MarginsLibrary(
     feed: List<LibraryItem>,
     listState: LazyListState,
     actions: LibraryActions,
+    inProgress: List<PuzzleEntity>,
 ) {
     Column(Modifier.fillMaxSize().background(MarginsT.bg)) {
         // Masthead: spaced-caps date, italic wordmark, dotted text actions.
@@ -302,6 +466,9 @@ private fun MarginsLibrary(
             onClear = viewModel::clearFilters,
         )
         Box(Modifier.fillMaxWidth().height(1.dp).background(MarginsT.divider))
+        if (!viewModel.filters.isActive) {
+            MarginsInProgressStrip(inProgress, actions.onOpenPuzzle)
+        }
 
         LazyColumn(
             state = listState,
@@ -519,6 +686,7 @@ private fun TermLibrary(
     catalogSize: Int,
     listState: LazyListState,
     actions: LibraryActions,
+    inProgress: List<PuzzleEntity>,
 ) {
     Column(Modifier.fillMaxSize().background(TermT.bg)) {
         // xwd bar: title, rule, amber [actions].
@@ -545,6 +713,9 @@ private fun TermLibrary(
             onOpen = actions.onFilters,
             onClear = viewModel::clearFilters,
         )
+        if (!viewModel.filters.isActive) {
+            TermInProgressStrip(inProgress, actions.onOpenPuzzle)
+        }
         // The bordered list panel.
         LazyColumn(
             state = listState,
@@ -708,6 +879,7 @@ private fun RisoLibrary(
     feed: List<LibraryItem>,
     listState: LazyListState,
     actions: LibraryActions,
+    inProgress: List<PuzzleEntity>,
 ) {
     Column(Modifier.fillMaxSize().background(RisoT.bg)) {
         // Masthead: off-register wordmark + rubber stamps.
@@ -753,6 +925,9 @@ private fun RisoLibrary(
             onOpen = actions.onFilters,
             onClear = viewModel::clearFilters,
         )
+        if (!viewModel.filters.isActive) {
+            RisoInProgressStrip(inProgress, actions.onOpenPuzzle)
+        }
 
         LazyColumn(
             state = listState,
@@ -983,7 +1158,7 @@ private fun LazyListScope.emptyAndEndNotes(
     color: Color,
     endText: String,
 ) {
-    if (feed.isEmpty() && !viewModel.loadingMore) {
+    if (feed.isEmpty() && !viewModel.loadingMore && viewModel.isDataReady) {
         item {
             Text(
                 when {
@@ -1112,6 +1287,14 @@ private fun LibraryFilterSheet(viewModel: LibraryViewModel, onDismiss: () -> Uni
                 }
                 ChoiceChip("Cryptic", selected = filters.puzzleType == PuzzleType.CRYPTIC) {
                     viewModel.setPuzzleTypeFilter(PuzzleType.CRYPTIC)
+                }
+            }
+
+            FilterGroup("Sort by") {
+                SortOrder.entries.forEach { order ->
+                    ChoiceChip(order.label, selected = filters.sortOrder == order) {
+                        viewModel.setSortOrder(order)
+                    }
                 }
             }
 

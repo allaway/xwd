@@ -50,6 +50,8 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     var completionState: CompletionState by mutableStateOf(CompletionState.IN_PROGRESS)
         private set
     var showCompletionDialog: Boolean by mutableStateOf(false)
+    /** True when the puzzle has notes that haven't been dismissed yet. */
+    var showNotesDialog: Boolean by mutableStateOf(false)
 
     /** True for puzzles imported from a photo, whose solution was AI-reconstructed. */
     var isPhotoImport: Boolean by mutableStateOf(false)
@@ -74,6 +76,7 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
                 (!e.isCompleted && Settings.getAutocheckDefault(application))
             if (autocheck) markAutocheckUsed()
             if (e.isCompleted) completionState = CompletionState.SOLVED
+            if (p.notes.isNotBlank()) showNotesDialog = true
             selected = p.cells.indexOfFirst { !it.isBlock }.coerceAtLeast(0)
             if (!p.hasWord(selected, direction)) direction = direction.opposite()
         }
@@ -120,6 +123,12 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
             selected = index
             if (!p.hasWord(index, direction)) direction = direction.opposite()
         }
+    }
+
+    fun selectClueByRef(number: Int, direction: Direction) {
+        val p = puzzle ?: return
+        val clue = p.clues.firstOrNull { it.number == number && it.direction == direction } ?: return
+        selectClue(clue)
     }
 
     fun selectClue(clue: Clue) {
@@ -304,6 +313,10 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
     fun dismissCompletionDialog() {
         showCompletionDialog = false
         dismissedIncorrectFill = true
+    }
+
+    fun dismissNotesDialog() {
+        showNotesDialog = false
     }
 
     private fun markAutocheckUsed() {

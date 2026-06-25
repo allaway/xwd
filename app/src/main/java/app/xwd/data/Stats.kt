@@ -5,6 +5,7 @@ import app.xwd.model.SizeClass
 import kotlinx.serialization.json.Json
 import java.time.DayOfWeek
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 
 data class SourceStats(
@@ -65,6 +66,12 @@ data class Stats(
     val perSource: List<SourceStats>,
     /** When the first recorded solve happened, for "since ..." footers. */
     val firstSolveEpochMillis: Long?,
+    /** Days solved in a row ending today (or yesterday if none today). */
+    val currentStreak: Int,
+    /** Longest ever consecutive-day solve run. */
+    val longestStreak: Int,
+    /** Fastest solve time per grid size class, only for puzzles with known grid info. */
+    val bestBySize: Map<SizeClass, Long>,
 )
 
 object StatsCalculator {
@@ -88,12 +95,32 @@ object StatsCalculator {
         val times = completed.map { it.elapsedSeconds }
         val withGrid = completed.mapNotNull { e -> gridInfo(e)?.let { e to it } }
 
+        val completionDates = completed.mapNotNull { it.completedAt }
+            .map { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
         val byDay = IntArray(7)
-        completed.mapNotNull { it.completedAt }
-            .map { Instant.ofEpochMilli(it).atZone(zone).dayOfWeek }
-            .forEach { byDay[it.ordinal - DayOfWeek.MONDAY.ordinal]++ }
+        completionDates.forEach { date ->
+            byDay[date.dayOfWeek.ordinal - DayOfWeek.MONDAY.ordinal]++
+        }
+        // Unique days for streak calculation (a day counts once no matter how many puzzles were solved).
+        val solvedDates = completionDates.toSortedSet()
 
         val solvedWithTime = withGrid.filter { (e, g) -> e.elapsedSeconds > 0 && g.whiteCells > 0 }
+
+        // Streak: consecutive solve days ending today or yesterday.
+        val today = LocalDate.now(zone)
+        var currentStreak = 0
+        var d = if (today in solvedDates) today else today.minusDays(1)
+        while (d in solvedDates) { currentStreak++; d = d.minusDays(1) }
+
+        // Longest ever consecutive-day streak.
+        var longestStreak = 0
+        var run = 0
+        var prev: LocalDate? = null
+        for (date in solvedDates) {
+            run = if (prev != null && date == prev!!.plusDays(1)) run + 1 else 1
+            longestStreak = maxOf(longestStreak, run)
+            prev = date
+        }
 
         return Stats(
             totalPuzzles = totalPuzzles,
@@ -119,6 +146,12 @@ object StatsCalculator {
                     bestSeconds = list.minOf { it.elapsedSeconds },
                 )
             }.sortedByDescending { it.solved },
+            currentStreak = currentStreak,
+            longestStreak = longestStreak,
+            bestBySize = withGrid
+                .filter { (e, _) -> e.elapsedSeconds > 0 }
+                .groupBy { (_, g) -> SizeClass.forDimensions(g.width, g.height) }
+                .mapValues { (_, list) -> list.minOf { (e, _) -> e.elapsedSeconds } },
         )
     }
 

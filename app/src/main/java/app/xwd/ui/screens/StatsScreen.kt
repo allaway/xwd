@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import app.xwd.data.SizeHeatmaps
 import app.xwd.data.Stats
 import app.xwd.data.formatSeconds
+import app.xwd.model.SizeClass
 import app.xwd.ui.StatsViewModel
 import app.xwd.ui.theme.DottedRule
 import app.xwd.ui.theme.LocalSkin
@@ -167,6 +168,22 @@ private fun MarginsStats(stats: Stats, onBack: () -> Unit) {
             if (stats.averageGridWidth != null && stats.averageGridHeight != null) {
                 MarginsRow("Average grid", "${stats.averageGridWidth}×${stats.averageGridHeight}")
             }
+            if (stats.currentStreak > 0 || stats.longestStreak > 0) {
+                MarginsRow(
+                    "Current streak",
+                    if (stats.currentStreak > 0) "${stats.currentStreak} ${if (stats.currentStreak == 1) "day" else "days"}" else "–",
+                )
+                MarginsRow(
+                    "Longest streak",
+                    "${stats.longestStreak} ${if (stats.longestStreak == 1) "day" else "days"}",
+                )
+            }
+            if (stats.bestBySize.isNotEmpty()) {
+                MarginsH3("Personal bests")
+                SizeClass.entries.filter { it in stats.bestBySize }.forEach { size ->
+                    MarginsRow(size.label, formatSeconds(stats.bestBySize.getValue(size)))
+                }
+            }
         }
         if (stats.heatmapsBySize.isNotEmpty()) {
             item { MarginsH3("Where you start · where you finish") }
@@ -291,6 +308,15 @@ private fun TermStats(stats: Stats, onBack: () -> Unit) {
                 }
                 if (stats.averageGridWidth != null && stats.averageGridHeight != null) {
                     TermKv("avg_grid", "${stats.averageGridWidth}x${stats.averageGridHeight}")
+                }
+                TermSect("streak")
+                TermKv("current", if (stats.currentStreak > 0) "${stats.currentStreak}d" else "--")
+                TermKv("longest", if (stats.longestStreak > 0) "${stats.longestStreak}d" else "--")
+                if (stats.bestBySize.isNotEmpty()) {
+                    TermSect("personal bests")
+                    SizeClass.entries.filter { it in stats.bestBySize }.forEach { size ->
+                        TermKv(size.label.lowercase(Locale.US), formatSeconds(stats.bestBySize.getValue(size)))
+                    }
                 }
             }
             if (stats.heatmapsBySize.isNotEmpty()) {
@@ -436,6 +462,19 @@ private fun RisoStats(stats: Stats, onBack: () -> Unit) {
             }
             if (stats.averageGridWidth != null && stats.averageGridHeight != null) {
                 RisoKv("average grid", "${stats.averageGridWidth}×${stats.averageGridHeight}")
+            }
+            if (stats.currentStreak > 0 || stats.longestStreak > 0) {
+                RisoKv(
+                    "current streak",
+                    if (stats.currentStreak > 0) "${stats.currentStreak} days" else "–",
+                )
+                RisoKv("longest streak", "${stats.longestStreak} days")
+            }
+            if (stats.bestBySize.isNotEmpty()) {
+                RisoH3("personal bests")
+                SizeClass.entries.filter { it in stats.bestBySize }.forEach { size ->
+                    RisoKv(size.label.lowercase(Locale.US), formatSeconds(stats.bestBySize.getValue(size)))
+                }
             }
         }
         if (stats.heatmapsBySize.isNotEmpty()) {
