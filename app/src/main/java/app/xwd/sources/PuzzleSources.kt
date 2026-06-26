@@ -65,6 +65,13 @@ data class PuzzleSource(
     val licenseBasis: String,
     val fetch: Fetch,
     val isCryptic: Boolean = false,
+    /**
+     * Where solvers can support the constructor financially, when the constructor
+     * publishes a stable, canonical donation link (a PayPal.me handle, a project
+     * donate page, …). Left null when the source takes no donations or only offers
+     * an ephemeral/session-scoped link that isn't safe to hard-code.
+     */
+    val donationUrl: String? = null,
 )
 
 object PuzzleSources {
@@ -118,6 +125,8 @@ object PuzzleSources {
                     else "https://www.brendanemmettquigley.com$href"
                 },
             ),
+            // BEQ's own "tip jar" PayPal.me link, advertised on his homepage.
+            donationUrl = "https://www.paypal.com/paypalme/TheBEQ",
         ),
         PuzzleSource(
             id = "club72",
@@ -262,6 +271,8 @@ object PuzzleSources {
                     "https://crosshare.org/dailyminis/${month.year}/${month.monthValue}"
                 },
             ),
+            // Crosshare is a donation-funded platform; its canonical donate page.
+            donationUrl = "https://crosshare.org/donate",
         ),
     )
 

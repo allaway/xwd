@@ -29,8 +29,12 @@ distributed sources above carries a formal license document either — almost
 no crossword does — so each source in
 [`PuzzleSources.kt`](app/src/main/java/com/allaway/xwd/sources/PuzzleSources.kt)
 must record a `licenseBasis` explaining why personal, non-commercial use is
-sanctioned by the rights holder (enforced by a unit test). Sources are easy
-to extend — both date-patterned feeds and scrape-the-latest-link pages work.
+sanctioned by the rights holder (enforced by a unit test). A source may also
+carry an optional `donationUrl`: when a constructor publishes a stable,
+canonical way to support them (a PayPal.me handle, a project's donate page),
+Settings → Feeds shows a *Support the constructor* link beneath that feed.
+Sources are easy to extend — both date-patterned feeds and
+scrape-the-latest-link pages work.
 
 ## Features
 

@@ -23,6 +23,23 @@ class PuzzleSourcesTest {
     }
 
     @Test
+    fun donationLinksAreCanonicalHttpsUrls() {
+        PuzzleSources.all.mapNotNull { it.donationUrl }.forEach { url ->
+            assertTrue("donation link must be https: $url", url.startsWith("https://"))
+            // Session-scoped PayPal "donate?token=" links expire; only stable,
+            // canonical destinations belong here.
+            assertTrue("donation link must not be a session token URL: $url", "token=" !in url)
+        }
+    }
+
+    @Test
+    fun donationSupportedSourcesExposeADonationLink() {
+        // BEQ and Crosshare both publish a stable, canonical donation link.
+        assertEquals("https://www.paypal.com/paypalme/TheBEQ", PuzzleSources.byId("beq")!!.donationUrl)
+        assertEquals("https://crosshare.org/donate", PuzzleSources.byId("crosshare-mini")!!.donationUrl)
+    }
+
+    @Test
     fun noCommercialSyndicateFeeds() {
         val ids = PuzzleSources.all.map { it.id }
         listOf("wsj", "universal", "nyt", "lat", "newsday", "usatoday").forEach {
