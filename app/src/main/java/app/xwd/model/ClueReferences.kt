@@ -14,16 +14,24 @@ object ClueReferences {
 
     /**
      * A run of one or more clue numbers joined by list separators (comma,
-     * slash, ampersand, hyphen, "and", whitespace), terminated by a single
-     * direction word. Group 1 is the whole number run; group 2 the direction.
+     * slash, ampersand, hyphen, dash, "and"/"or", whitespace), terminated by a
+     * single direction word. Group 1 is the whole number run; group 2 the
+     * direction.
      *
      * The number run lets a single direction apply to every number before it,
      * which is how constructors write multi-entry answers ("1, 5 and 9 Across",
-     * "17- and 25-Across", "12/13 Down"). A bare "32 Down" is just the simplest
-     * case with one number.
+     * "17- and 25-Across", "12/13 Down", "17–25 Across"). A bare "32 Down" is
+     * the simplest case with one number.
+     *
+     * The direction may be spelled out (across/down) or abbreviated (ac/dn),
+     * the latter common in British and cryptic puzzles ("5ac", "12dn"). The
+     * trailing `(?![a-z])` keeps "ac" from matching inside "acre"/"across", and
+     * the `the|to|from` guard rejects prose like "10 across the board" or
+     * "knocked 5 down to the ground".
      */
     private val PATTERN = Regex(
-        """(\d+(?:[\s,/&-]+(?:and[\s,/&-]+)?\d+)*)[\s-]*(across|down)""",
+        """(\d+(?:[\s,/&\-–—]+(?:(?:and|or)[\s,/&\-–—]+)?\d+)*)""" +
+            """[\s\-–—]*(across|down|ac|dn)(?![a-z])(?!\s+(?:the|to|from)\b)""",
         RegexOption.IGNORE_CASE,
     )
 

@@ -94,4 +94,83 @@ class ClueReferencesTest {
         val refs = ClueReferences.find(text)
         assertEquals(listOf("1", "5", "9"), refs.map { text.substring(it.start, it.end) })
     }
+
+    @Test
+    fun handlesAbbreviatedDirections() {
+        // British and cryptic puzzles abbreviate across/down as ac/dn.
+        assertEquals(listOf(5 to Direction.ACROSS), pairs("See 5ac"))
+        assertEquals(listOf(12 to Direction.DOWN), pairs("Cf. 12dn"))
+        assertEquals(listOf(12 to Direction.ACROSS), pairs("12ac"))
+        assertEquals(
+            listOf(9 to Direction.DOWN, 14 to Direction.ACROSS),
+            pairs("9dn and 14ac"),
+        )
+    }
+
+    @Test
+    fun abbreviationDoesNotMatchInsideWords() {
+        // "ac" must not fire inside "acre" / "across the" prose fragments.
+        assertTrue(pairs("A field of 5 acres").isEmpty())
+    }
+
+    @Test
+    fun handlesOrLists() {
+        assertEquals(
+            listOf(17 to Direction.ACROSS, 25 to Direction.ACROSS),
+            pairs("17- or 25-Across"),
+        )
+        assertEquals(
+            listOf(5 to Direction.DOWN, 6 to Direction.DOWN),
+            pairs("5 or 6 Down"),
+        )
+    }
+
+    @Test
+    fun handlesAmpersandLists() {
+        assertEquals(
+            listOf(1 to Direction.ACROSS, 5 to Direction.ACROSS),
+            pairs("1 & 5 Across"),
+        )
+    }
+
+    @Test
+    fun handlesHyphenatedNumberRuns() {
+        assertEquals(
+            listOf(4 to Direction.DOWN, 5 to Direction.DOWN, 6 to Direction.DOWN),
+            pairs("see 4-, 5- and 6-Down"),
+        )
+    }
+
+    @Test
+    fun handlesEnDashRange() {
+        assertEquals(
+            listOf(17 to Direction.ACROSS, 25 to Direction.ACROSS),
+            pairs("17–25 Across"),
+        )
+    }
+
+    @Test
+    fun guardsAgainstAcrossTheBoardProse() {
+        assertTrue(pairs("10 across the board").isEmpty())
+        assertTrue(pairs("knocked 5 down to the ground").isEmpty())
+        assertTrue(pairs("go 9 down from there").isEmpty())
+    }
+
+    @Test
+    fun ignoresOrdinals() {
+        assertTrue(pairs("the 16th down the list").isEmpty())
+    }
+
+    @Test
+    fun handlesComplexMixedReference() {
+        assertEquals(
+            listOf(
+                1 to Direction.ACROSS,
+                16 to Direction.DOWN,
+                38 to Direction.DOWN,
+                54 to Direction.DOWN,
+            ),
+            pairs("With 1-Across, 16-, 38- and 54-Down"),
+        )
+    }
 }
