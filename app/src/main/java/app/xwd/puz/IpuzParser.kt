@@ -64,6 +64,7 @@ object IpuzParser {
         val blocks = BooleanArray(area)
         val numbers = IntArray(area)
         val circled = BooleanArray(area)
+        val shaded = BooleanArray(area)
         for (r in 0 until height) {
             val row = puzzleRows[r] as? JsonArray
                 ?: throw PuzFormatException("Row $r is not an array")
@@ -72,7 +73,7 @@ object IpuzParser {
             }
             for (c in 0 until width) {
                 val i = r * width + c
-                val cell = unwrapCell(row[c], circled, i)
+                val cell = unwrapCell(row[c], circled, shaded, i)
                 when {
                     cell == null -> blocks[i] = true // null = void; render as block
                     cell.contentOrNull == blockChar -> blocks[i] = true
@@ -103,7 +104,7 @@ object IpuzParser {
         }
 
         val built = try {
-            GridBuilder.build(String(letters), width, height, circled)
+            GridBuilder.build(String(letters), width, height, circled, shaded)
         } catch (e: IllegalArgumentException) {
             throw PuzFormatException(e.message ?: "Invalid grid")
         }
@@ -143,16 +144,29 @@ object IpuzParser {
     /**
      * A puzzle-grid cell is a primitive, null, or a StyledCell object like
      * `{"cell": 5, "style": {"shapebg": "circle"}}`. Returns the underlying
-     * primitive (null for void cells) and records any circle style.
+     * primitive (null for void cells) and records any circle or shading style.
+     *
+     * Shading (grey squares) is expressed as a background `color`, a
+     * `highlight: true` flag, or a non-circle `shapebg`; all render as a
+     * filled cell so the puzzle's theme squares are actually visible.
      */
-    private fun unwrapCell(element: JsonElement, circled: BooleanArray, index: Int): JsonPrimitive? =
+    private fun unwrapCell(
+        element: JsonElement,
+        circled: BooleanArray,
+        shaded: BooleanArray,
+        index: Int,
+    ): JsonPrimitive? =
         when (element) {
             is JsonNull -> null
             is JsonPrimitive -> element
             is JsonObject -> {
                 val style = element["style"] as? JsonObject
-                if ((style?.get("shapebg") as? JsonPrimitive)?.contentOrNull == "circle") {
-                    circled[index] = true
+                val shapebg = (style?.get("shapebg") as? JsonPrimitive)?.contentOrNull
+                if (shapebg == "circle") circled[index] = true
+                val hasColor = (style?.get("color") as? JsonPrimitive)?.contentOrNull?.isNotBlank() == true
+                val highlighted = (style?.get("highlight") as? JsonPrimitive)?.contentOrNull == "true"
+                if (hasColor || highlighted || (shapebg != null && shapebg != "circle")) {
+                    shaded[index] = true
                 }
                 when (val inner = element["cell"]) {
                     null, is JsonNull -> null

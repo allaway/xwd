@@ -341,7 +341,7 @@ private fun TermInProgressStrip(items: List<PuzzleEntity>, onOpen: (String) -> U
 @Composable
 private fun RisoInProgressStrip(items: List<PuzzleEntity>, onOpen: (String) -> Unit) {
     if (items.isEmpty()) return
-    Column(Modifier.padding(top = 10.dp)) {
+    Column(Modifier.padding(top = 10.dp, bottom = 16.dp)) {
         Text(
             "IN PROGRESS",
             fontSize = 9.sp,

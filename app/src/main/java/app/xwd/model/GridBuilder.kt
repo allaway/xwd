@@ -15,7 +15,13 @@ object GridBuilder {
         val starts: List<Start>,
     )
 
-    fun build(solution: String, width: Int, height: Int, circled: BooleanArray? = null): Result {
+    fun build(
+        solution: String,
+        width: Int,
+        height: Int,
+        circled: BooleanArray? = null,
+        shaded: BooleanArray? = null,
+    ): Result {
         require(solution.length == width * height) {
             "Grid is ${solution.length} cells, expected ${width}x$height"
         }
@@ -48,6 +54,7 @@ object GridBuilder {
                     solution = ch.uppercaseChar(),
                     number = cellNumber,
                     circled = circled?.get(i) ?: false,
+                    shaded = shaded?.get(i) ?: false,
                 ),
             )
         }

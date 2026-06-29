@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.xwd.data.formatSeconds
+import app.xwd.model.ClueReferences
 import app.xwd.model.Direction
 import app.xwd.ui.CompletionState
 import app.xwd.ui.SolveViewModel
@@ -82,19 +83,20 @@ import java.util.Locale
 /** Minimum lines reserved in the clue bar text to prevent layout shifts. */
 private const val ClueBarMinLines = 2
 
-private val XRefPattern = Regex("""(\d+)[\s\-]*(across|down)""", RegexOption.IGNORE_CASE)
 private const val XRefTag = "XREF"
 
 /**
- * Annotates cross-references in a clue string (e.g. "32 down") with a link
- * style and a string annotation so taps can jump to the referenced clue.
+ * Annotates cross-references in a clue string (e.g. "32 down", or each number
+ * of "1, 5 and 9 across") with a link style and an annotation so taps jump to
+ * the referenced clue. Each clue number is annotated separately, so a shared
+ * direction list stays individually tappable.
  */
 private fun annotateClue(text: String, linkStyle: SpanStyle): AnnotatedString =
     buildAnnotatedString {
         append(text)
-        XRefPattern.findAll(text).forEach { match ->
-            addStyle(linkStyle, match.range.first, match.range.last + 1)
-            addStringAnnotation(XRefTag, match.value, match.range.first, match.range.last + 1)
+        ClueReferences.find(text).forEach { ref ->
+            addStyle(linkStyle, ref.start, ref.end)
+            addStringAnnotation(XRefTag, "${ref.number}:${ref.direction.name}", ref.start, ref.end)
         }
     }
 
@@ -118,12 +120,11 @@ private fun ClueText(
                     val offset = lr.getOffsetForPosition(pos)
                     annotated.getStringAnnotations(XRefTag, offset, offset).firstOrNull()
                         ?.let { ann ->
-                            XRefPattern.find(ann.item)?.let { m ->
-                                val num = m.groupValues[1].toIntOrNull() ?: return@let
-                                val dir = if (m.groupValues[2].equals("across", ignoreCase = true))
-                                    Direction.ACROSS else Direction.DOWN
-                                viewModel.selectClueByRef(num, dir)
-                            }
+                            val parts = ann.item.split(":")
+                            val num = parts.getOrNull(0)?.toIntOrNull() ?: return@let
+                            val dir = if (parts.getOrNull(1) == Direction.ACROSS.name)
+                                Direction.ACROSS else Direction.DOWN
+                            viewModel.selectClueByRef(num, dir)
                         }
                 }
             }
