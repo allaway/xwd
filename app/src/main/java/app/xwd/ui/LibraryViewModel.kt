@@ -135,7 +135,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     /** Completed-puzzle count, for the Solved tab's badge. */
     fun solvedCount(saved: List<PuzzleEntity>): Int = saved.count { it.isCompleted }
 
-    fun setView(value: LibraryView) {
+    fun selectView(value: LibraryView) {
         view = value
     }
 

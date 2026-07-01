@@ -464,7 +464,7 @@ private fun MarginsLibrary(
             accent = MarginsT.ink,
             muted = MarginsT.muted,
             modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
-            onSelect = viewModel::setView,
+            onSelect = viewModel::selectView,
         )
         FilterBar(
             label = "filter",
@@ -721,7 +721,7 @@ private fun TermLibrary(
             accent = TermT.green,
             muted = TermT.dim,
             modifier = Modifier.padding(start = 14.dp, end = 14.dp),
-            onSelect = viewModel::setView,
+            onSelect = viewModel::selectView,
         )
         FilterBar(
             label = "[filter]",
@@ -942,7 +942,7 @@ private fun RisoLibrary(
             accent = RisoT.blue,
             muted = RisoT.blueMuted,
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 10.dp),
-            onSelect = viewModel::setView,
+            onSelect = viewModel::selectView,
         )
         FilterBar(
             label = "filter",
