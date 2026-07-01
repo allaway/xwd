@@ -31,6 +31,9 @@ sealed interface LibraryItem {
 
 enum class PuzzleType { CRYPTIC, NORMAL }
 
+/** Which slice of the library is on screen: the working set or the solved archive. */
+enum class LibraryView { ACTIVE, SOLVED }
+
 enum class SortOrder(val label: String) {
     DATE("Date"),
     TITLE("Title"),

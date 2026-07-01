@@ -79,6 +79,26 @@ class IpuzParserTest {
     }
 
     @Test
+    fun parsesShadedCellsFromBackgroundColor() {
+        // Grey/shaded theme squares are expressed as a background color (or a
+        // highlight flag); both must render as filled cells, not be dropped.
+        val ipuz = """
+            {
+              "kind": ["http://ipuz.org/crossword#1"],
+              "dimensions": {"width": 3, "height": 1},
+              "puzzle": [[{"cell": 1, "style": {"color": "808080"}}, {"cell": 0, "style": {"highlight": "true"}}, 0]],
+              "solution": [["C", "A", "T"]],
+              "clues": {"Across": [{"number": 1, "clue": "Pet"}]}
+            }
+        """.trimIndent()
+        val p = IpuzParser.parse(ipuz)
+        assertTrue("color square should be shaded", p.cells[0].shaded)
+        assertTrue("highlight square should be shaded", p.cells[1].shaded)
+        assertFalse("plain square should not be shaded", p.cells[2].shaded)
+        assertFalse("shading is not circling", p.cells[0].circled)
+    }
+
+    @Test
     fun missingSolutionBehavesLikeLockedPuzzle() {
         val ipuz = """
             {

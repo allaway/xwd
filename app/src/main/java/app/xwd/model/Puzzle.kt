@@ -13,6 +13,8 @@ data class Cell(
     val solution: Char?,
     val number: Int = 0,
     val circled: Boolean = false,
+    /** Themed background fill (grey/shaded squares), distinct from circling. */
+    val shaded: Boolean = false,
 ) {
     val isBlock: Boolean get() = solution == null
 }

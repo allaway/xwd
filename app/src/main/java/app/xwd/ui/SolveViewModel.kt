@@ -13,6 +13,7 @@ import app.xwd.data.PuzzleRepository
 import app.xwd.data.Settings
 import app.xwd.data.XwdDatabase
 import app.xwd.model.Clue
+import app.xwd.model.ClueReferences
 import app.xwd.model.Direction
 import app.xwd.model.Puzzle
 import app.xwd.model.opposite
@@ -93,14 +94,10 @@ class SolveViewModel(application: Application, private val puzzleId: String) :
         get() {
             val p = puzzle ?: return emptySet()
             val text = currentClue?.text ?: return emptySet()
-            val pattern = Regex("""(\d+)[\s\-]*(across|down)""", RegexOption.IGNORE_CASE)
-            return pattern.findAll(text).flatMap { match ->
-                val num = match.groupValues[1].toIntOrNull() ?: return@flatMap emptySequence()
-                val dir = if (match.groupValues[2].equals("across", ignoreCase = true))
-                    Direction.ACROSS else Direction.DOWN
-                (p.clues.firstOrNull { it.number == num && it.direction == dir }?.cells
-                    ?: emptyList()).asSequence()
-            }.toSet()
+            return ClueReferences.find(text).flatMapTo(HashSet()) { ref ->
+                p.clues.firstOrNull { it.number == ref.number && it.direction == ref.direction }
+                    ?.cells ?: emptyList()
+            }
         }
 
     fun isWrong(index: Int): Boolean {

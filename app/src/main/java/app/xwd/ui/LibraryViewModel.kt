@@ -66,6 +66,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     var filters: LibraryFilters by mutableStateOf(LibraryFilters())
         private set
 
+    /** Whether the working set or the solved archive is on screen. */
+    var view: LibraryView by mutableStateOf(LibraryView.ACTIVE)
+        private set
+
     var loadingMore: Boolean by mutableStateOf(false)
         private set
     var catalogExhausted: Boolean by mutableStateOf(false)
@@ -111,9 +115,29 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val crypticSourceIds: Set<String>
         get() = sources.filter { it.isCryptic }.map { it.id }.toSet()
 
-    /** The feed: the catalog joined against saved puzzles, in stable order. */
-    fun feed(saved: List<PuzzleEntity>, catalog: List<CatalogEntity>): List<LibraryItem> =
-        LibraryFeed.build(saved, catalog, disabledSources, crypticSourceIds, filters)
+    /**
+     * The feed: the catalog joined against saved puzzles, in stable order.
+     * The Solved view shows only completed puzzles; the Active view shows
+     * everything else (downloadable and started-but-unfinished puzzles), so a
+     * finished puzzle leaves the working list and lands in the archive.
+     */
+    fun feed(saved: List<PuzzleEntity>, catalog: List<CatalogEntity>): List<LibraryItem> {
+        val items = LibraryFeed.build(saved, catalog, disabledSources, crypticSourceIds, filters)
+        return items.filter { item ->
+            val completed = (item as? LibraryItem.Saved)?.entity?.isCompleted == true
+            when (view) {
+                LibraryView.ACTIVE -> !completed
+                LibraryView.SOLVED -> completed
+            }
+        }
+    }
+
+    /** Completed-puzzle count, for the Solved tab's badge. */
+    fun solvedCount(saved: List<PuzzleEntity>): Int = saved.count { it.isCompleted }
+
+    fun selectView(value: LibraryView) {
+        view = value
+    }
 
     fun setDownloadedOnly(value: Boolean) {
         filters = filters.copy(downloadedOnly = value)
@@ -166,8 +190,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     /** Extend the catalog one page deeper into every enabled source's archive. */
     fun loadMore() {
         // Nothing to fetch when the view is limited to on-device puzzles
-        // (downloaded-only, or a specific size, which only saved puzzles have).
-        if (loadingMore || filters.downloadedOnly || filters.size != null) return
+        // (the solved archive, downloaded-only, or a specific size, which
+        // only saved puzzles have).
+        if (loadingMore || view == LibraryView.SOLVED ||
+            filters.downloadedOnly || filters.size != null
+        ) {
+            return
+        }
         loadingMore = true
         viewModelScope.launch {
             for (source in sources) {

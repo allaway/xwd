@@ -73,6 +73,7 @@ import app.xwd.data.formatSeconds
 import app.xwd.model.SizeClass
 import app.xwd.sources.PuzzleDownloader.CatalogEntry
 import app.xwd.ui.LibraryItem
+import app.xwd.ui.LibraryView
 import app.xwd.ui.LibraryViewModel
 import app.xwd.ui.PuzzleType
 import app.xwd.ui.SortOrder
@@ -106,6 +107,7 @@ fun LibraryScreen(
 
     val feed = viewModel.feed(puzzles, catalog)
     val inProgress = inProgressPuzzles(puzzles)
+    val solvedCount = viewModel.solvedCount(puzzles)
     val listState = rememberLazyListState()
 
     // Re-read feeds/toggles changed in Settings whenever the library resumes.
@@ -151,9 +153,9 @@ fun LibraryScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (LocalSkin.current) {
-                Skin.MARGINS -> MarginsLibrary(viewModel, feed, listState, actions, inProgress)
-                Skin.TERMINAL -> TermLibrary(viewModel, feed, catalogSize = catalog.size, listState, actions, inProgress)
-                Skin.OVERPRINT -> RisoLibrary(viewModel, feed, listState, actions, inProgress)
+                Skin.MARGINS -> MarginsLibrary(viewModel, feed, listState, actions, inProgress, solvedCount)
+                Skin.TERMINAL -> TermLibrary(viewModel, feed, catalogSize = catalog.size, listState, actions, inProgress, solvedCount)
+                Skin.OVERPRINT -> RisoLibrary(viewModel, feed, listState, actions, inProgress, solvedCount)
             }
         }
     }
@@ -341,7 +343,7 @@ private fun TermInProgressStrip(items: List<PuzzleEntity>, onOpen: (String) -> U
 @Composable
 private fun RisoInProgressStrip(items: List<PuzzleEntity>, onOpen: (String) -> Unit) {
     if (items.isEmpty()) return
-    Column(Modifier.padding(top = 10.dp)) {
+    Column(Modifier.padding(top = 10.dp, bottom = 16.dp)) {
         Text(
             "IN PROGRESS",
             fontSize = 9.sp,
@@ -419,6 +421,7 @@ private fun MarginsLibrary(
     listState: LazyListState,
     actions: LibraryActions,
     inProgress: List<PuzzleEntity>,
+    solvedCount: Int,
 ) {
     Column(Modifier.fillMaxSize().background(MarginsT.bg)) {
         // Masthead: spaced-caps date, italic wordmark, dotted text actions.
@@ -455,18 +458,26 @@ private fun MarginsLibrary(
                 MarginsAction("settings", actions.onSettings)
             }
         }
+        LibraryTabs(
+            view = viewModel.view,
+            solvedCount = solvedCount,
+            accent = MarginsT.ink,
+            muted = MarginsT.muted,
+            modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
+            onSelect = viewModel::selectView,
+        )
         FilterBar(
             label = "filter",
             summary = filterSummary(viewModel),
             active = viewModel.filters.isActive,
             accent = MarginsT.ochreDeep,
             muted = MarginsT.muted,
-            modifier = Modifier.padding(top = 10.dp, start = 24.dp, end = 24.dp, bottom = 8.dp),
+            modifier = Modifier.padding(top = 6.dp, start = 24.dp, end = 24.dp, bottom = 8.dp),
             onOpen = actions.onFilters,
             onClear = viewModel::clearFilters,
         )
         Box(Modifier.fillMaxWidth().height(1.dp).background(MarginsT.divider))
-        if (!viewModel.filters.isActive) {
+        if (viewModel.view == LibraryView.ACTIVE && !viewModel.filters.isActive) {
             MarginsInProgressStrip(inProgress, actions.onOpenPuzzle)
         }
 
@@ -687,6 +698,7 @@ private fun TermLibrary(
     listState: LazyListState,
     actions: LibraryActions,
     inProgress: List<PuzzleEntity>,
+    solvedCount: Int,
 ) {
     Column(Modifier.fillMaxSize().background(TermT.bg)) {
         // xwd bar: title, rule, amber [actions].
@@ -703,6 +715,14 @@ private fun TermLibrary(
             TermBtn("[Σstats]", actions.onStats)
             TermBtn("[⚙set]", actions.onSettings)
         }
+        LibraryTabs(
+            view = viewModel.view,
+            solvedCount = solvedCount,
+            accent = TermT.green,
+            muted = TermT.dim,
+            modifier = Modifier.padding(start = 14.dp, end = 14.dp),
+            onSelect = viewModel::selectView,
+        )
         FilterBar(
             label = "[filter]",
             summary = filterSummary(viewModel),
@@ -713,7 +733,7 @@ private fun TermLibrary(
             onOpen = actions.onFilters,
             onClear = viewModel::clearFilters,
         )
-        if (!viewModel.filters.isActive) {
+        if (viewModel.view == LibraryView.ACTIVE && !viewModel.filters.isActive) {
             TermInProgressStrip(inProgress, actions.onOpenPuzzle)
         }
         // The bordered list panel.
@@ -880,6 +900,7 @@ private fun RisoLibrary(
     listState: LazyListState,
     actions: LibraryActions,
     inProgress: List<PuzzleEntity>,
+    solvedCount: Int,
 ) {
     Column(Modifier.fillMaxSize().background(RisoT.bg)) {
         // Masthead: off-register wordmark + rubber stamps.
@@ -915,17 +936,25 @@ private fun RisoLibrary(
                 RisoStamp("settings", -4f, actions.onSettings)
             }
         }
+        LibraryTabs(
+            view = viewModel.view,
+            solvedCount = solvedCount,
+            accent = RisoT.blue,
+            muted = RisoT.blueMuted,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 10.dp),
+            onSelect = viewModel::selectView,
+        )
         FilterBar(
             label = "filter",
             summary = filterSummary(viewModel),
             active = viewModel.filters.isActive,
             accent = RisoT.pinkDeep,
             muted = RisoT.blueMuted,
-            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 12.dp),
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 8.dp),
             onOpen = actions.onFilters,
             onClear = viewModel::clearFilters,
         )
-        if (!viewModel.filters.isActive) {
+        if (viewModel.view == LibraryView.ACTIVE && !viewModel.filters.isActive) {
             RisoInProgressStrip(inProgress, actions.onOpenPuzzle)
         }
 
@@ -1143,6 +1172,50 @@ private fun RisoSkeleton() {
 
 /* ===================== shared bits ===================== */
 
+/** Two-way switch between the working library and the solved archive. */
+@Composable
+private fun LibraryTabs(
+    view: LibraryView,
+    solvedCount: Int,
+    accent: Color,
+    muted: Color,
+    modifier: Modifier = Modifier,
+    onSelect: (LibraryView) -> Unit,
+) {
+    Row(
+        modifier,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LibraryTab("Library", view == LibraryView.ACTIVE, accent, muted) {
+            onSelect(LibraryView.ACTIVE)
+        }
+        LibraryTab(
+            if (solvedCount > 0) "Solved · $solvedCount" else "Solved",
+            view == LibraryView.SOLVED,
+            accent,
+            muted,
+        ) { onSelect(LibraryView.SOLVED) }
+    }
+}
+
+@Composable
+private fun LibraryTab(
+    label: String,
+    selected: Boolean,
+    accent: Color,
+    muted: Color,
+    onClick: () -> Unit,
+) {
+    Text(
+        label,
+        color = if (selected) accent else muted,
+        fontSize = 13.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        modifier = Modifier.clickableNoRipple(onClick).padding(vertical = 4.dp),
+    )
+}
+
 @Composable
 private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
     this.clickable(
@@ -1162,6 +1235,8 @@ private fun LazyListScope.emptyAndEndNotes(
         item {
             Text(
                 when {
+                    viewModel.view == LibraryView.SOLVED ->
+                        "No solved puzzles yet. Finished puzzles are filed here once you complete them."
                     viewModel.filters.size != null ->
                         "No downloaded puzzles of this size. Size filters only match puzzles already on your device."
                     viewModel.filters.downloadedOnly ->
@@ -1180,7 +1255,9 @@ private fun LazyListScope.emptyAndEndNotes(
             )
         }
     }
-    if (feed.isNotEmpty() && viewModel.catalogExhausted && !viewModel.loadingMore) {
+    if (feed.isNotEmpty() && viewModel.view == LibraryView.ACTIVE &&
+        viewModel.catalogExhausted && !viewModel.loadingMore
+    ) {
         item {
             Text(
                 endText,

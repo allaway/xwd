@@ -82,6 +82,7 @@ fun CrosswordGrid(
                 isSelected -> colors.selected
                 inWord -> colors.word
                 isReferenced -> colors.referenced
+                c.shaded -> colors.shaded
                 else -> colors.paper
             }
             drawRect(background, topLeft, boxSize)
