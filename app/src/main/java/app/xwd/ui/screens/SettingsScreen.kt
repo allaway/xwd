@@ -1,5 +1,7 @@
 package app.xwd.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,10 +50,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import app.xwd.data.Backup
 import app.xwd.data.FailureReason
 import app.xwd.sources.PuzzleSources
 import app.xwd.ui.BulkState
 import app.xwd.ui.SettingsViewModel
+import app.xwd.ui.TransferState
 import app.xwd.ui.theme.Skin
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,6 +67,17 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     var showAddFeed by remember { mutableStateOf(false) }
+
+    // A restored backup can carry a different skin; apply it as soon as it lands.
+    val restoredSkin = viewModel.restoredSkinName
+    LaunchedEffect(restoredSkin) {
+        if (restoredSkin != null) {
+            Skin.entries.firstOrNull { it.name == restoredSkin }
+                ?.takeIf { it != currentSkin }
+                ?.let(onSkinChange)
+            viewModel.consumeRestoredSkin()
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -88,6 +104,7 @@ fun SettingsScreen(
             item { SolvingSection(viewModel) }
             item { FeedsSection(viewModel, onAddFeed = { showAddFeed = true }) }
             item { DownloadsSection(viewModel) }
+            item { TransferSection(viewModel) }
         }
     }
 
@@ -354,6 +371,151 @@ private fun BulkDownloadRow(viewModel: SettingsViewModel) {
             }
         }
     }
+}
+
+@Composable
+private fun TransferSection(viewModel: SettingsViewModel) {
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(Backup.MIME_TYPE),
+    ) { uri -> uri?.let(viewModel::exportTo) }
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let(viewModel::restoreFrom) }
+
+    SectionCard(
+        "New phone",
+        "Back up every downloaded puzzle, your progress and solve times, the " +
+            "catalog of published puzzles, and these settings to one file. Save it " +
+            "somewhere both phones can reach (Drive, Files, a cable copy), then " +
+            "restore it on the new phone.",
+    ) {
+        if (viewModel.hasApiKey) {
+            SettingRow(
+                title = "Include Claude API key",
+                subtitle = "Off by default: the backup file is plain and unencrypted, so anyone " +
+                    "who gets it would get the key. Leave it off and re-enter the key on the new phone.",
+            ) {
+                Switch(
+                    checked = viewModel.includeApiKeyInBackup,
+                    onCheckedChange = viewModel::setIncludeApiKeyInBackup,
+                )
+            }
+            HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+        }
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            when (val state = viewModel.transfer) {
+                TransferState.Idle -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { exportLauncher.launch(viewModel.backupFileName) }) {
+                            Text("Back up to file")
+                        }
+                        OutlinedButton(onClick = { restoreLauncher.launch(arrayOf("*/*")) }) {
+                            Text("Restore")
+                        }
+                    }
+                    Text(
+                        "Restoring merges: puzzles already on this phone keep whichever copy " +
+                            "is further along, so nothing you have solved is lost.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
+                is TransferState.Exporting -> TransferProgress(
+                    label = "Backing up",
+                    done = state.done,
+                    total = state.total,
+                    onCancel = viewModel::cancelTransfer,
+                )
+                is TransferState.Restoring -> TransferProgress(
+                    label = "Restoring",
+                    done = state.done,
+                    total = state.total,
+                    onCancel = viewModel::cancelTransfer,
+                )
+                is TransferState.Exported -> {
+                    Text(
+                        "Backed up ${state.result.puzzles} puzzles and " +
+                            "${state.result.catalog} catalog entries (${formatSize(state.result.bytes)}).",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "Open the file on the new phone, install xwd there, and tap Restore.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { viewModel.dismissTransfer() }) { Text("Done") }
+                }
+                is TransferState.Restored -> {
+                    val r = state.result
+                    val headline = buildString {
+                        append("Restored ${r.puzzlesAdded} puzzles")
+                        if (r.puzzlesUpdated > 0) append(", updated ${r.puzzlesUpdated}")
+                        append(".")
+                    }
+                    Text(
+                        headline,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    val details = buildList {
+                        if (r.puzzlesKept > 0) add("${r.puzzlesKept} already up to date")
+                        if (r.catalogAdded > 0) add("${r.catalogAdded} new catalog entries")
+                        if (r.settingsRestored) add("settings restored")
+                        if (r.apiKeyRestored) add("API key restored")
+                    }
+                    if (details.isNotEmpty()) {
+                        Text(
+                            details.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { viewModel.dismissTransfer() }) { Text("Done") }
+                }
+                is TransferState.Failed -> {
+                    Text(
+                        state.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { viewModel.dismissTransfer() }) { Text("Back") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransferProgress(label: String, done: Int, total: Int, onCancel: () -> Unit) {
+    if (total > 0) {
+        LinearProgressIndicator(
+            progress = { done.toFloat() / total },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    } else {
+        LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
+    Spacer(Modifier.height(8.dp))
+    Text(
+        if (total > 0) "$label - $done of $total rows" else "$label...",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Spacer(Modifier.height(8.dp))
+    TextButton(onClick = onCancel) { Text("Stop") }
+}
+
+/** Human-readable file size for the backup we just wrote. */
+private fun formatSize(bytes: Long): String = when {
+    bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
+    bytes >= 1_000 -> "${bytes / 1_000} KB"
+    else -> "$bytes bytes"
 }
 
 @Composable

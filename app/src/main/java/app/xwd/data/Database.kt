@@ -14,7 +14,9 @@ import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.Serializable
 
+@Serializable
 @Entity(tableName = "puzzles")
 data class PuzzleEntity(
     @PrimaryKey val id: String, // "<sourceId>-<isoDate>"
@@ -50,6 +52,7 @@ data class PuzzleEntity(
  * crosswords available for retrieval, surviving across launches so the
  * library feed is stable and the background refresher can add to it.
  */
+@Serializable
 @Entity(tableName = "catalog")
 data class CatalogEntity(
     @PrimaryKey val id: String, // "<sourceId>-<uniqueKey>"
@@ -84,6 +87,13 @@ interface CatalogDao {
 
     @Query("SELECT MIN(sortDate) FROM catalog WHERE sourceId = :sourceId")
     suspend fun oldestSortDate(sourceId: String): String?
+
+    @Query("SELECT COUNT(*) FROM catalog")
+    suspend fun count(): Int
+
+    /** Keyset page, ordered by id, for streaming the table into a backup. */
+    @Query("SELECT * FROM catalog WHERE id > :after ORDER BY id LIMIT :limit")
+    suspend fun pageAfter(after: String, limit: Int): List<CatalogEntity>
 }
 
 @Dao
@@ -114,6 +124,17 @@ interface PuzzleDao {
 
     @Query("SELECT COUNT(*) FROM puzzles")
     suspend fun count(): Int
+
+    /** Keyset page, ordered by id, for streaming the table into a backup. */
+    @Query("SELECT * FROM puzzles WHERE id > :after ORDER BY id LIMIT :limit")
+    suspend fun pageAfter(after: String, limit: Int): List<PuzzleEntity>
+
+    @Query("SELECT * FROM puzzles WHERE id IN (:ids)")
+    suspend fun getMany(ids: List<String>): List<PuzzleEntity>
+
+    /** Restore path: rows already merged with what was here, so replace wholesale. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(rows: List<PuzzleEntity>)
 }
 
 @Database(entities = [PuzzleEntity::class, CatalogEntity::class], version = 4, exportSchema = false)

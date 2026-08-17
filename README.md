@@ -72,6 +72,14 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
   average / best solve times, average grid size and time-per-square, 3×3
   heatmaps of where in the grid your solves start and finish, a
   day-of-week solving rhythm chart, and a per-source breakdown.
+- **Moving to a new phone** — Settings > New phone writes every downloaded
+  puzzle, your progress and solve times, the catalog of published puzzles,
+  and your settings (feeds, custom feeds, skin, solving defaults) to a single
+  zip you can save to Drive, Files, or a cable copy. Restoring on the other
+  phone *merges* rather than overwrites: a puzzle both devices know keeps
+  whichever copy is further along, so restoring an older backup can't wipe out
+  newer solving. The Claude API key is left out unless you switch it on before
+  exporting, since the file is unencrypted.
 
 ## Architecture
 
@@ -86,6 +94,12 @@ to extend — both date-patterned feeds and scrape-the-latest-link pages work.
   downloads auto-detect the format by content.
 - Room database stores each puzzle (as JSON), the solver's grid, elapsed
   time, and assistance metrics; OkHttp handles downloads.
+- Device-to-device transfer is a zip of `manifest.json`, `settings.json`, and
+  JSON-lines dumps of the two tables, streamed a page at a time in both
+  directions ([`Backup.kt`](app/src/main/java/app/xwd/data/Backup.kt) holds the
+  format and the merge rules, unit-tested;
+  [`BackupRepository.kt`](app/src/main/java/app/xwd/data/BackupRepository.kt)
+  does the I/O through the Storage Access Framework).
 - Photo import uses the official Anthropic Java SDK: one streaming Messages
   API call (`claude-opus-4-8`, adaptive thinking, high effort, vision input,
   structured JSON output) extracts and solves the puzzle; `ImportConverter`
