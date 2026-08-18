@@ -24,6 +24,9 @@ class ScanIncrementalTest {
         override suspend fun knownIds(ids: List<String>): List<String> = ids.filter { it in rows }
         override suspend fun oldestSortDate(sourceId: String): String? =
             rows.values.filter { it.sourceId == sourceId }.minOfOrNull { it.sortDate }
+        override suspend fun count(): Int = rows.size
+        override suspend fun pageAfter(after: String, limit: Int): List<CatalogEntity> =
+            rows.values.sortedBy { it.id }.filter { it.id > after }.take(limit)
     }
 
     @Test
