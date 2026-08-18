@@ -102,6 +102,33 @@ object Settings {
         prefs(context).edit().putStringSet(KEY_DISABLED_SOURCES, ids).apply()
     }
 
+    /** Everything worth carrying to another device, for [Backup]. */
+    fun snapshot(context: Context, includeApiKey: Boolean = false): Backup.SettingsSnapshot =
+        Backup.SettingsSnapshot(
+            skinName = getSkinName(context),
+            autocheckDefault = getAutocheckDefault(context),
+            autoDownloadProspective = getAutoDownloadProspective(context),
+            disabledSources = getDisabledSources(context).sorted(),
+            customFeeds = getCustomFeeds(context),
+            catalogPageCursors = getCatalogPageCursors(context),
+            apiKey = getApiKey(context).takeIf { includeApiKey && it.isNotBlank() },
+        )
+
+    /**
+     * Write a restored snapshot back. The API key is only touched when the
+     * backup carried one, so restoring never clears a key already entered
+     * on this device.
+     */
+    fun apply(context: Context, snapshot: Backup.SettingsSnapshot) {
+        setSkinName(context, snapshot.skinName)
+        setAutocheckDefault(context, snapshot.autocheckDefault)
+        setAutoDownloadProspective(context, snapshot.autoDownloadProspective)
+        setDisabledSources(context, snapshot.disabledSources.toSet())
+        setCustomFeeds(context, snapshot.customFeeds)
+        setCatalogPageCursors(context, snapshot.catalogPageCursors)
+        snapshot.apiKey?.takeIf { it.isNotBlank() }?.let { setApiKey(context, it) }
+    }
+
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }

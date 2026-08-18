@@ -1,26 +1,33 @@
 package app.xwd.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import app.xwd.data.Backup
+import app.xwd.data.BackupRepository
 import app.xwd.data.BulkDownload
 import app.xwd.data.CatalogRepository
 import app.xwd.data.CatalogRepository.Companion.toCatalogEntry
 import app.xwd.data.DownloadDiagnostics
+import app.xwd.data.ExportResult
 import app.xwd.data.FailureReason
 import app.xwd.data.PuzzleRepository
+import app.xwd.data.RestoreResult
 import app.xwd.data.Settings
 import app.xwd.data.SourceRegistry
 import app.xwd.data.XwdDatabase
 import app.xwd.sources.CustomFeed
 import app.xwd.sources.PuzzleSource
 import app.xwd.sources.PuzzleSources
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /** Progress of the "download history" / bulk-download flow. */
 sealed interface BulkState {
@@ -50,11 +57,27 @@ sealed interface BulkState {
     }
 }
 
+/** Progress of moving the library to or from a backup file. */
+sealed interface TransferState {
+    data object Idle : TransferState
+
+    data class Exporting(val done: Int, val total: Int) : TransferState
+
+    data class Restoring(val done: Int, val total: Int) : TransferState
+
+    data class Exported(val result: ExportResult) : TransferState
+
+    data class Restored(val result: RestoreResult) : TransferState
+
+    data class Failed(val message: String) : TransferState
+}
+
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = XwdDatabase.get(application)
     private val catalogRepo = CatalogRepository(db.catalogDao())
     private val puzzleRepo = PuzzleRepository(db.puzzleDao())
+    private val backupRepo = BackupRepository(application, db)
 
     var sources: List<PuzzleSource> by mutableStateOf(SourceRegistry.resolved(application))
         private set
@@ -74,7 +97,29 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         private set
     var message: String? by mutableStateOf(null)
 
+    var transfer: TransferState by mutableStateOf(TransferState.Idle)
+        private set
+
+    /** Whether an exported backup should carry the Claude API key too. */
+    var includeApiKeyInBackup: Boolean by mutableStateOf(false)
+        private set
+
+    /** Only offer the API key toggle when there is a key to carry. */
+    var hasApiKey: Boolean by mutableStateOf(Settings.getApiKey(application).isNotBlank())
+        private set
+
+    /**
+     * Skin name a restore brought in, for the UI to apply live; the screen
+     * clears it with [consumeRestoredSkin] once it has.
+     */
+    var restoredSkinName: String? by mutableStateOf(null)
+        private set
+
+    /** Suggested file name for the export document picker. */
+    val backupFileName: String get() = Backup.fileName(LocalDate.now().toString())
+
     private var bulkJob: Job? = null
+    private var transferJob: Job? = null
 
     fun updateAutocheckDefault(value: Boolean) {
         autocheckDefault = value
@@ -208,6 +253,90 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun dismissBulk() {
         bulk = BulkState.Idle
+    }
+
+    fun updateIncludeApiKeyInBackup(value: Boolean) {
+        includeApiKeyInBackup = value
+    }
+
+    /** Write the whole library, progress, and settings to the picked file. */
+    fun exportTo(uri: Uri) {
+        if (transfer is TransferState.Exporting || transfer is TransferState.Restoring) return
+        val context = getApplication<Application>()
+        transfer = TransferState.Exporting(done = 0, total = 0)
+        transferJob = viewModelScope.launch {
+            try {
+                val result = context.contentResolver.openOutputStream(uri, "wt").use { out ->
+                    requireNotNull(out) { "couldn't open that file for writing" }
+                    backupRepo.export(
+                        out = out,
+                        includeApiKey = includeApiKeyInBackup,
+                        appVersionName = versionName(),
+                    ) { done, total -> transfer = TransferState.Exporting(done, total) }
+                }
+                transfer = TransferState.Exported(result)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                transfer = TransferState.Failed(e.message ?: "The backup couldn't be written.")
+            }
+        }
+    }
+
+    /** Merge a backup file into this device. */
+    fun restoreFrom(uri: Uri) {
+        if (transfer is TransferState.Exporting || transfer is TransferState.Restoring) return
+        val context = getApplication<Application>()
+        transfer = TransferState.Restoring(done = 0, total = 0)
+        transferJob = viewModelScope.launch {
+            try {
+                val result = context.contentResolver.openInputStream(uri).use { input ->
+                    requireNotNull(input) { "couldn't open that file" }
+                    backupRepo.restore(input) { done, total ->
+                        transfer = TransferState.Restoring(done, total)
+                    }
+                }
+                reloadFromSettings()
+                transfer = TransferState.Restored(result)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                transfer = TransferState.Failed(e.message ?: "That backup couldn't be read.")
+            }
+        }
+    }
+
+    fun cancelTransfer() {
+        transferJob?.cancel()
+        transferJob = null
+        transfer = TransferState.Idle
+    }
+
+    fun dismissTransfer() {
+        transfer = TransferState.Idle
+    }
+
+    fun consumeRestoredSkin() {
+        restoredSkinName = null
+    }
+
+    /** Pull the restored preferences back into the screen's state. */
+    private fun reloadFromSettings() {
+        val context = getApplication<Application>()
+        customFeeds = Settings.getCustomFeeds(context)
+        disabledSources = Settings.getDisabledSources(context)
+        autocheckDefault = Settings.getAutocheckDefault(context)
+        autoDownloadProspective = Settings.getAutoDownloadProspective(context)
+        hasApiKey = Settings.getApiKey(context).isNotBlank()
+        sources = SourceRegistry.resolved(context)
+        restoredSkinName = Settings.getSkinName(context).takeIf { it.isNotBlank() }
+    }
+
+    private fun versionName(): String = try {
+        val context = getApplication<Application>()
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+    } catch (_: Exception) {
+        ""
     }
 
     private suspend fun currentPending() = BulkDownload.pending(
