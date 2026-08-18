@@ -397,7 +397,7 @@ private fun TransferSection(viewModel: SettingsViewModel) {
             ) {
                 Switch(
                     checked = viewModel.includeApiKeyInBackup,
-                    onCheckedChange = viewModel::setIncludeApiKeyInBackup,
+                    onCheckedChange = viewModel::updateIncludeApiKeyInBackup,
                 )
             }
             HorizontalDivider(Modifier.padding(horizontal = 16.dp))

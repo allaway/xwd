@@ -255,7 +255,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         bulk = BulkState.Idle
     }
 
-    fun setIncludeApiKeyInBackup(value: Boolean) {
+    fun updateIncludeApiKeyInBackup(value: Boolean) {
         includeApiKeyInBackup = value
     }
 
